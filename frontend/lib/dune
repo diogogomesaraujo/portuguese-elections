@@ -1,0 +1,6 @@
+(library
+ (name frontend)
+ (libraries bonsai js_of_ocaml virtual_dom)
+ (preprocess
+   (pps js_of_ocaml-ppx bonsai.ppx_bonsai ppx_jane))
+)
