@@ -2,6 +2,4 @@ open Backend.Map
 open Backend.Pg
 
 let () =
-  Array.iteri (fun i r -> Array.iteri (
-    fun j c -> Printf.printf "%d, %d: %s\n" i j (show_wkt_term c)
-  ) r) (Map.get_polygon Map.connect "SELECT st_astext(geom) FROM  cont_freguesias;")
+   Map.draw (Map.get_polygons Map.connect "SELECT st_astext(st_simplifypreservetopology(geom, 50)) FROM  cont_freguesias WHERE distrito_ilha = 'Braga';") ()
