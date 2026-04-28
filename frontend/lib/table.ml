@@ -1,6 +1,11 @@
 open! Core
 open! Bonsai_web
 
+module Table = struct
+  type t = Vdom.Node.t
+
+end
+
 type row =
   { id : int
   ; name : string

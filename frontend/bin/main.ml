@@ -1,11 +1,9 @@
-open Frontend.Test
+open Frontend.Table
 open! Virtual_dom
 open! Bonsai_web
 open! Core
-open Frontend.Test
-
-let root_component = Bonsai.const bulleted_list
 
 let () =
   Async_js.init ();
+  let root_component = Bonsai.const table in
   Bonsai_web.Start.start root_component
