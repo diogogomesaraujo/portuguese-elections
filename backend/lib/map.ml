@@ -3,14 +3,18 @@ open Parse
 open Plplot
 
 module Map = struct
-  let connect = new Postgresql.connection ~conninfo:"host=localhost port=5432 dbname=spatial user=diogoaraujo" ()
+  type t = wkt_term array array
 
-  let get_polygons (c: Postgresql.connection) query =
-    c#send_query query;
+  let connect =
+    new Postgresql.connection
+      ~conninfo:"host=localhost port=5432 dbname=spatial user=diogoaraujo" ()
+
+  let from_query ~(connection: Postgresql.connection) ~query =
+    connection#send_query query;
     Array.map (fun r -> Array.map (
       fun c ->
       parse c
-    ) r) (fetch_single_result c)#get_all
+    ) r) (fetch_single_result connection)#get_all
 
   let get_pol_xy pol =
     let (x, y) = List.fold_left
@@ -23,14 +27,14 @@ module Map = struct
       ) ([], []) pol
     in (Array.of_list x, Array.of_list y)
 
-  let get_wkt_xy_l (pol: wkt_term) =
+  let get_wkt_xy_l pol =
     match pol with
     | Polygon p ->
       [get_pol_xy p]
     | Multipolygon p ->
       List.map (fun p' -> get_pol_xy p') p
 
-  let get_xy (pols_l_l: wkt_term array array) =
+  let get_xy pols_l_l =
     Array.fold_left (fun acc p_l ->
       acc @ (Array.fold_left (
         fun acc' p -> acc' @ get_wkt_xy_l p
@@ -63,11 +67,14 @@ module Map = struct
       fun (x, y) -> plline x y;
     ) l
 
-  let draw p () =
-    let l = get_xy p in
+  let draw ~polygon ~name ~format () =
+    let l = get_xy polygon in
     let (xmin, xmax, ymin, ymax) = get_min_max l in
 
     plparseopts Sys.argv [PL_PARSE_FULL];
+
+    plsdev format;
+    plsfnam name;
 
     plinit ();
 
