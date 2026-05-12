@@ -2,8 +2,8 @@ open Backend.Map
 open Backend.Pg
 
 let () =
-  let p = Map.municipality_parishes
-    ~municipality: "Braga"
+  let p = Map.district_parishes
+    ~district: "Porto"
     ~connection: Map.connect
   in Map.draw
     ~polygon: p

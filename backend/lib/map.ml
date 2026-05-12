@@ -81,19 +81,18 @@ module Map = struct
       let min_max a = Array.fold_left (
         fun (mi, ma) a' ->
           (min mi a', max ma a')
-      ) (Float.max_float, 0.) a in
+      ) (Float.max_float, Float.min_float) a in
       let (min_x, max_x) = min_max x in
       let (min_y, max_y) = min_max y in
       (min_x, max_x, min_y, max_y)
 
     (** Function that returns the min and max out of all polygons in the map.*)
     let get_min_max l =
-      let (min_x, max_x, min_y, max_y) = List.fold_left (
-        fun (min_x, max_x, min_y, max_y) xy ->
-          let (min_x', max_x', min_y', max_y') = get_min_max_xy xy in
-          (min min_x min_x', max max_x max_x', min min_y min_y', max max_y max_y')
-      ) (Float.max_float, 0., Float.max_float, 0.) l in
-      (min min_x min_y, max max_x max_y)
+      List.fold_left (
+        fun (acc_min_x, acc_max_x, acc_min_y, acc_max_y) xy ->
+          let (min_x, max_x, min_y, max_y) = get_min_max_xy xy in
+          min acc_min_x min_x, max acc_max_x max_x, min acc_min_y min_y, max acc_max_y max_y
+      ) (Float.max_float, Float.min_float, Float.max_float, Float.min_float) l
   end
 
   (** Function that fills the interior of the map in the plot.*)
@@ -111,7 +110,7 @@ module Map = struct
   (** Function that draws a polygon (fill and outline) in a plot.*)
   let draw ~polygon ~name ~format ~outline_color ~fill_color () =
     let l = Xy.get_xy polygon in
-    let (min_l, max_l) = Xy.get_min_max l in
+    let (min_x, max_x, min_y, max_y) = Xy.get_min_max l in
 
     plparseopts Sys.argv [PL_PARSE_FULL];
 
@@ -120,7 +119,7 @@ module Map = struct
 
     plinit ();
 
-    plenv min_l max_l min_l max_l 0 0;
+    plenv min_x max_x min_y max_y 1 (-2);
 
     plcol0 outline_color;
     fill l;
