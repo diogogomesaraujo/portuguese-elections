@@ -2,5 +2,5 @@
 (ocamllex lexer)
 (library
  (name backend)
- (libraries dream postgresql plplot)
+ (libraries postgresql plplot)
  (preprocess (pps ppx_deriving.show)))

@@ -9,7 +9,7 @@ module Map = struct
   type t = wkt_term array array
 
   (** Constant value that determines the precision used to rasterize the map.*)
-  let precision = 60
+  let base_precision = 500
 
   (** Function that returns a PostgreSQL connection.*)
   let connect =
@@ -25,23 +25,23 @@ module Map = struct
     ) r) (fetch_single_result connection)#get_all
 
   (** Function that returns all the parishes in Portugal.*)
-  let country_parishes ~connection =
+  let country_parishes ~connection ~precision =
     let query =
-      Printf.sprintf "SELECT st_astext(st_simplify(geom, %d)) FROM cont_freguesias;"
+      Printf.sprintf "SELECT st_astext(st_simplifypreservetopology(geom, %d)) FROM cont_freguesias;"
         precision in
     from_query ~connection ~query
 
   (** Function that returns all the parishes in a given district.*)
-  let district_parishes ~district ~connection =
+  let district_parishes ~district ~connection ~precision =
     let query =
-      Printf.sprintf "SELECT st_astext(st_simplify(geom, %d)) FROM cont_freguesias WHERE distrito_ilha = '%s'"
+      Printf.sprintf "SELECT st_astext(st_simplifypreservetopology(geom, %d)) FROM cont_freguesias WHERE distrito_ilha = '%s'"
         precision district in
     from_query ~connection ~query
 
   (** Function that returns all the parishes in a given municipality.*)
-  let municipality_parishes ~municipality ~connection =
+  let municipality_parishes ~municipality ~connection ~precision =
     let query =
-      Printf.sprintf "SELECT st_astext(st_simplify(geom, %d)) FROM cont_freguesias WHERE municipio = '%s';"
+      Printf.sprintf "SELECT st_astext(st_simplifypreservetopology(geom, %d)) FROM cont_freguesias WHERE municipio = '%s';"
         precision municipality in
     from_query ~connection ~query
 
@@ -95,6 +95,9 @@ module Map = struct
       ) (Float.max_float, Float.min_float, Float.max_float, Float.min_float) l
   end
 
+  let config ~format ~outline_color ~fill_color =
+    (format, outline_color, fill_color)
+
   (** Function that fills the interior of the map in the plot.*)
   let fill l =
     List.iter (
@@ -108,14 +111,18 @@ module Map = struct
     ) l
 
   (** Function that draws a polygon (fill and outline) in a plot.*)
-  let draw ~polygon ~name ~format ~outline_color ~fill_color () =
+  let draw ~polygon ~config ~path () =
+    let (format, outline_color, fill_color) = config in
+
     let l = Xy.get_xy polygon in
     let (min_x, max_x, min_y, max_y) = Xy.get_min_max l in
 
     plparseopts Sys.argv [PL_PARSE_FULL];
 
     plsdev format;
-    plsfnam name;
+    plsfnam path;
+
+    plscolbg 255 255 255;
 
     plinit ();
 

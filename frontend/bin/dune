@@ -1,7 +1,7 @@
 (executable
  (name main)
  (modes js)
- (libraries frontend bonsai bonsai.web core async_js)
+ (libraries frontend bonsai bonsai.web async_js)
  (preprocess
    (pps ppx_jane js_of_ocaml-ppx ppx_typed_fields ppx_css))
 )
