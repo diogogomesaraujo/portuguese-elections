@@ -1,6 +1,4 @@
-(menhir (modules parser))
-(ocamllex lexer)
 (library
  (name backend)
- (libraries postgresql plplot)
- (preprocess (pps ppx_deriving.show)))
+ (libraries  plplot caqti-driver-postgresql dream)
+ (preprocess (pps ppx_deriving.show lwt_ppx)))

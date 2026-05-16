@@ -1,4 +1,5 @@
 (executable
  (public_name backend)
  (name main)
- (libraries backend api))
+ (libraries backend api)
+ (preprocess (pps ppx_deriving.show ppx_let lwt_ppx)))

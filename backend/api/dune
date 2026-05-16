@@ -1,4 +1,4 @@
 (library
  (name api)
- (libraries dream backend)
- (preprocess (pps ppx_deriving.show)))
+ (libraries dream backend yojson ppx_yojson_conv)
+ (preprocess (pps ppx_deriving.show ppx_let lwt_ppx ppx_yojson_conv)))

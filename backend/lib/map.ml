@@ -1,138 +1,62 @@
 open Pg
-open Parse
-open Plplot
+open Caqti_request.Infix
 
-(** Module that represents a set of polygons that is retrieved from a PostGIS spatial database
-to be drawn using plplot.*)
 module Map = struct
-  (** Type that represents a matrix of polygons.*)
-  type t = wkt_term array array
-
-  (** Constant value that determines the precision used to rasterize the map.*)
-  let base_precision = 500
-
-  (** Function that returns a PostgreSQL connection.*)
-  let connect =
-    new Postgresql.connection
-      ~conninfo:"host=localhost port=5432 dbname=spatial user=diogoaraujo" ()
-
-  (** Function that retrieves a map from the database according to a given query.*)
-  let from_query ~(connection: Postgresql.connection) ~query =
-    connection#send_query query;
-    Array.map (fun r -> Array.map (
-      fun c ->
-      parse c
-    ) r) (fetch_single_result connection)#get_all
-
-  (** Function that returns all the parishes in Portugal.*)
-  let country_parishes ~connection ~precision =
+  let country_districts ~precision =
     let query =
-      Printf.sprintf "SELECT st_astext(st_simplifypreservetopology(geom, %d)) FROM cont_freguesias;"
+      Printf.sprintf
+        "WITH district_geoms AS (
+            SELECT
+                distrito_ilha,
+                st_union(st_simplifypreservetopology(geom, %d)) as geom
+            FROM cont_freguesias
+            GROUP BY distrito_ilha
+        )
+        SELECT distrito_ilha, st_assvg(st_convexhull(geom)) FROM district_geoms;"
         precision in
-    from_query ~connection ~query
+    Caqti_type.(unit ->* t2 string string) query
 
-  (** Function that returns all the parishes in a given district.*)
-  let district_parishes ~district ~connection ~precision =
+
+  let district_municipalities ~district ~precision =
     let query =
-      Printf.sprintf "SELECT st_astext(st_simplifypreservetopology(geom, %d)) FROM cont_freguesias WHERE distrito_ilha = '%s'"
-        precision district in
-    from_query ~connection ~query
+      Printf.sprintf
+        "WITH municipio_geoms AS (
+            SELECT
+              municipio,
+              st_union(st_simplifypreservetopology(geom, %d)) as geom
+            FROM cont_freguesias
+            WHERE distrito_ilha = '%s'
+            GROUP BY municipio
+        )
+        SELECT municipio, st_assvg(st_convexhull(geom)) FROM municipio_geoms;"
+        precision district
+    in
+    Caqti_type.(unit ->? t2 string string) query
 
-  (** Function that returns all the parishes in a given municipality.*)
-  let municipality_parishes ~municipality ~connection ~precision =
+  let municipality_parishes ~municipality ~precision =
     let query =
-      Printf.sprintf "SELECT st_astext(st_simplifypreservetopology(geom, %d)) FROM cont_freguesias WHERE municipio = '%s';"
-        precision municipality in
-    from_query ~connection ~query
+      Printf.sprintf
+        "WITH municipio_geoms AS (
+            SELECT
+                municipio,
+                st_union(st_simplifypreservetopology(geom, %d)) as geom
+            FROM cont_freguesias
+            WHERE distrito_ilha = '%s'
+            GROUP BY municipio
+        )
+        SELECT municipio, st_assvg(st_convexhull(geom)) as svg FROM municipio_geoms;"
+        precision municipality
+    in
+    Caqti_type.(unit ->? t2 string string) query
 
-  (** Module that defines lower-level polygon serialization functions.*)
-  module Xy = struct
-    (** Function that returns a polygon as a tuple of arrays of x's and y's.*)
-    let get_pol_xy pol =
-      let (x, y) = List.fold_left (
-        fun (acc_x, acc_y) p' ->
-          let x_to_add, y_to_add = List.fold_left (
-            fun (x', y') (x_to_add, y_to_add) ->
-              (x' @ [x_to_add], y' @ [y_to_add])
-          ) ([],[]) p' in
-          (acc_x @ x_to_add, acc_y @ y_to_add)
-        ) ([], []) pol in
-      (Array.of_list x, Array.of_list y)
-
-    (** Function that parses a WKT term as a list of polygons' x and y arrays.*)
-    let get_wkt_xy_l pol =
-      match pol with
-      | Polygon p ->
-        [get_pol_xy p]
-
-      | Multipolygon p ->
-        List.map (fun p' -> get_pol_xy p') p
-
-    (** Function that serializes a matrix of WKT terms into a list of polygons' x and y arrays.*)
-    let get_xy pols_l_l =
-      Array.fold_left (fun acc p_l ->
-        acc @ (Array.fold_left (
-          fun acc' p -> acc' @ get_wkt_xy_l p
-        ) [] p_l)
-      ) [] pols_l_l
-
-    (** Function that returns the min's and max's of x and y arrays.*)
-    let get_min_max_xy (x, y) =
-      let min_max a = Array.fold_left (
-        fun (mi, ma) a' ->
-          (min mi a', max ma a')
-      ) (Float.max_float, Float.min_float) a in
-      let (min_x, max_x) = min_max x in
-      let (min_y, max_y) = min_max y in
-      (min_x, max_x, min_y, max_y)
-
-    (** Function that returns the min and max out of all polygons in the map.*)
-    let get_min_max l =
-      List.fold_left (
-        fun (acc_min_x, acc_max_x, acc_min_y, acc_max_y) xy ->
-          let (min_x, max_x, min_y, max_y) = get_min_max_xy xy in
-          min acc_min_x min_x, max acc_max_x max_x, min acc_min_y min_y, max acc_max_y max_y
-      ) (Float.max_float, Float.min_float, Float.max_float, Float.min_float) l
-  end
-
-  let config ~format ~outline_color ~fill_color =
-    (format, outline_color, fill_color)
-
-  (** Function that fills the interior of the map in the plot.*)
-  let fill l =
-    List.iter (
-      fun (x, y) -> plfill x y;
-    ) l
-
-  (** Function that outlines the map in the plot.*)
-  let outline l =
-    List.iter (
-      fun (x, y) -> plline x y;
-    ) l
-
-  (** Function that draws a polygon (fill and outline) in a plot.*)
-  let draw ~polygon ~config ~path () =
-    let (format, outline_color, fill_color) = config in
-
-    let l = Xy.get_xy polygon in
-    let (min_x, max_x, min_y, max_y) = Xy.get_min_max l in
-
-    plparseopts Sys.argv [PL_PARSE_FULL];
-
-    plsdev format;
-    plsfnam path;
-
-    plscolbg 255 255 255;
-
-    plinit ();
-
-    plenv min_x max_x min_y max_y 1 (-2);
-
-    plcol0 outline_color;
-    fill l;
-
-    plcol0 fill_color;
-    outline l;
-
-    plend ();
+  let parish ~parish ~precision =
+    let query =
+      Printf.sprintf
+        "SELECT
+          st_assvg(st_simplifypreservetopology(geom, %d)) as svg
+        FROM cont_freguesias WHERE freguesia = '%s'
+        GROUP BY svg;"
+        precision parish
+    in
+    Caqti_type.(unit ->? string) query
 end
