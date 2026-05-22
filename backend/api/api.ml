@@ -3,6 +3,7 @@ open Lwt.Syntax
 open Lwt.Infix
 
 module Api = struct
+  let headers = [("Access-Control-Allow-Origin", "*")]
 
   let country_districts ~connection =
     let module Conn = (val connection : Caqti_lwt.CONNECTION) in
@@ -16,10 +17,10 @@ module Api = struct
               `Tuple [`String district; `String svg])
             res in
           Yojson.to_string (`List tuple_lst)
-          |> Dream.response ~headers: [("Access-Control-Allow-Origin", "*")]
+          |> Dream.response ~headers
           |> Lwt.return
         | Error e -> Yojson.to_string (`List [])
-          |> Dream.response ~headers: [("Access-Control-Allow-Origin", "*")]
+          |> Dream.response ~headers
           |> Lwt.return
       )
 
@@ -36,10 +37,10 @@ module Api = struct
               `Tuple [`String municipality; `String svg])
             res in
           Yojson.to_string (`List tuple_lst)
-          |> Dream.response ~headers: [("Access-Control-Allow-Origin", "*")]
+          |> Dream.response ~headers
           |> Lwt.return
         | Error e -> Yojson.to_string (`List [])
-          |> Dream.response ~headers: [("Access-Control-Allow-Origin", "*")]
+          |> Dream.response ~headers
           |> Lwt.return
       )
 
@@ -56,10 +57,10 @@ module Api = struct
               `Tuple [`String parish; `String svg])
             res in
           Yojson.to_string (`List tuple_lst)
-          |> Dream.response ~headers: [("Access-Control-Allow-Origin", "*")]
+          |> Dream.response ~headers
           |> Lwt.return
         | Error e -> Yojson.to_string (`List [])
-          |> Dream.response ~headers: [("Access-Control-Allow-Origin", "*")]
+          |> Dream.response ~headers
           |> Lwt.return
       )
 
@@ -68,12 +69,12 @@ module Api = struct
     Dream.get "/parish/:parish"
       (fun req ->
         let parish = Dream.param req "parish" in
-        let%lwt result = Conn.find_opt (Map.parish ~parish ~precision: 1) () in
+        let%lwt result = Conn.find_opt (Map.parish ~precision: 1 ~parish ) () in
         match result with
         | Ok res ->
           `String (Option.get res)
           |> Yojson.to_string
-          |> Dream.response ~headers: [("Access-Control-Allow-Origin", "*")]
+          |> Dream.response ~headers
           |> Lwt.return
         | Error e -> Yojson.to_string (`List [])
           |> Dream.response

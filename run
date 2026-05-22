@@ -1,1 +1,0 @@
-$ PGHOST=localhost PGDATABASE=spatial PGPORT=5433 dune exec backend
