@@ -28,22 +28,39 @@ module Api = struct
     map_req
       ~connection
       ~name: "country"
-      ~map: Map.district_municipalities
-      ~precision: 1
+      ~map: Map.country_districts
+      ~precision: 500
 
   let district_municipalities ~connection =
     map_req
       ~connection
       ~name: "district"
       ~map: Map.district_municipalities
-      ~precision: 1
+      ~precision: 5
+
+  let municipality_parishes ~connection =
+    map_req
+      ~connection
+      ~name: "municipality"
+      ~map: Map.municipality_parishes
+      ~precision: 5
+
+  let parish ~connection =
+    map_req
+      ~connection
+      ~name: "parish"
+      ~map: Map.parish
+      ~precision: 5
 
   let run ~connection =
     Dream.run
     @@ Dream.logger
     @@ Dream.router [
       Dream.scope "/map" [Dream.memory_sessions] [
+        country_districts       ~connection;
         district_municipalities ~connection;
+        municipality_parishes   ~connection;
+        parish                  ~connection;
       ]
     ]
 end

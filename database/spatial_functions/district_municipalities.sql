@@ -20,7 +20,7 @@ svg := (WITH municipality_geom AS (
 ),
 municipalities_geoms AS (
 SELECT municipio,
-           st_simplifypreservetopology((st_collectionextract(geom), precision_value)
+           st_simplifypreservetopology(st_collectionextract(geom), precision_value)
            AS geom
 FROM municipality_geom)
 SELECT svgdoc(

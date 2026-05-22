@@ -57,4 +57,8 @@ module Map = struct
     let district ~district ~uri () =
       let uri = uri ^ "/map/district/" ^ district in
       map ~uri ()
+
+    let country ~uri () =
+      let uri = uri ^ "/map/country/_" in
+      map ~uri ()
 end

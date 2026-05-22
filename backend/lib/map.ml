@@ -14,14 +14,12 @@ module Map = struct
   let country_districts _ ~precision =
     let query =
       Printf.sprintf
-        "WITH district_geoms AS (
-            SELECT
-                distrito_ilha,
-                st_union(st_simplifypreservetopology(geom, %d)) as geom
-            FROM cont_freguesias
-            GROUP BY distrito_ilha
-        )
-        SELECT distrito_ilha, st_assvg(st_translate(st_convexhull(geom), -st_xmin(geom), -st_ymin(geom))) FROM district_geoms;"
+        "SELECT * FROM country(
+          '#000000',
+          '100000',
+          'blue',
+          '0.5',
+          %d)"
         precision in
     Caqti_type.(unit ->? string) query
 
@@ -40,23 +38,21 @@ module Map = struct
     in
     Caqti_type.(unit ->? string) query
 
-  let municipality_parishes ~municipality ~precision =
+  let municipality_parishes municipality ~precision =
     let query =
       Printf.sprintf
-        "WITH municipio_geoms AS (
-            SELECT
-                municipio,
-                st_union(st_simplifypreservetopology(geom, %d)) as geom
-            FROM cont_freguesias
-            WHERE distrito_ilha = '%s'
-            GROUP BY municipio
-        )
-        SELECT municipio, st_assvg(st_translate(st_convexhull(geom), -st_xmin(geom), -st_ymin(geom))) as svg FROM municipio_geoms;"
-        precision municipality
+        "SELECT * FROM municipality_parishes(
+          '%s',
+          '#000000',
+          '3',
+          'blue',
+          '0.5',
+          %d)"
+        municipality precision
     in
     Caqti_type.(unit ->? string) query
 
-  let parish ~parish ~precision =
+  let parish parish ~precision =
     let query =
       Printf.sprintf
         "SELECT * FROM parish(
