@@ -22,6 +22,17 @@ INSERT INTO op.office(code, name, scope_level) VALUES
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, scope_level = EXCLUDED.scope_level;
 
 INSERT INTO op.election(election_type_id, code, name, election_date, election_year, source_name)
+SELECT election_type_id, 'AUTARQUICAS_2017', 'Eleições Autárquicas 2017', DATE '2017-10-01', 2017, 'CNE Mapa Oficial'
+FROM op.election_type
+WHERE code = 'AUTARQUICAS'
+ON CONFLICT (code) DO UPDATE SET
+    name = EXCLUDED.name,
+    election_date = EXCLUDED.election_date,
+    election_year = EXCLUDED.election_year,
+    source_name = EXCLUDED.source_name,
+    updated_at = now();
+
+INSERT INTO op.election(election_type_id, code, name, election_date, election_year, source_name)
 SELECT election_type_id, 'AUTARQUICAS_2021', 'Eleições Autárquicas 2021', DATE '2021-09-26', 2021, 'CNE Mapa Oficial'
 FROM op.election_type
 WHERE code = 'AUTARQUICAS'

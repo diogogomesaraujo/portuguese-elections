@@ -9,6 +9,19 @@ psql -d elections -f sql/warehouse_schema.sql
 export DATABASE_URL='postgresql://localhost/elections'
 
 
+mkdir -p data/converted
+
+/Applications/LibreOffice.app/Contents/MacOS/soffice --headless \
+  --convert-to xlsx \
+  --outdir data/converted \
+  "data/01-mapa_I_vf_r2.xls"
+
+
+python3 etl/import_election_results.py \
+  --file "data/converted/01-mapa_I_vf_r2.xlsx" \
+  --election-code AUTARQUICAS_2017
+
+
 python3 etl/import_election_results.py \
   --file "data/mapa_1_resultados.xlsx" \
   --election-code AUTARQUICAS_2021
@@ -39,7 +52,7 @@ SELECT
 FROM op.turnout_result tr
 JOIN op.election e ON e.election_id = tr.election_id
 JOIN op.office o ON o.office_id = tr.office_id
-WHERE e.code IN ('AUTARQUICAS_2021', 'AUTARQUICAS_2025')
+WHERE e.code IN ('AUTARQUICAS_2017', 'AUTARQUICAS_2021', 'AUTARQUICAS_2025')
 GROUP BY e.code, o.code
 ORDER BY e.code, o.code;
 "
