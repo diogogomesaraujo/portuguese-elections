@@ -29,7 +29,7 @@ module Api = struct
       ~connection
       ~name: "country"
       ~map: Map.country_districts
-      ~precision: 500
+      ~precision: 5
 
   let district_municipalities ~connection =
     map_req

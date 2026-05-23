@@ -12,7 +12,7 @@ svg := (WITH municipality_geom AS (
 SELECT
     distrito_ilha,
     municipio,
-    st_scale(st_transform(st_union(geom), 4326), 500000, 500000)
+    st_scale(st_transform(st_union(geom), 4326), 10000, 10000)
     AS geom
 FROM cont_freguesias
 GROUP BY municipio, distrito_ilha
