@@ -15,22 +15,30 @@ from psycopg2.extras import Json
 
 
 OFFICIAL_PARTY_HEADERS = {
+    "A",
     "ADN",
     "B.E.",
     "CDS-PP",
     "CH",
+    "E",
     "IL",
     "JPP",
     "L",
+    "MAS",
     "MPT",
     "NC",
     "ND",
     "PAN",
+    "PCTP/MRPP",
+    "PDR",
     "PLS",
+    "PNR",
     "PPD/PSD",
     "PPM",
+    "PPV/CDC",
     "PS",
     "PTP",
+    "PURP",
     "R.I.R.",
     "VP",
     "PCP-PEV",
@@ -77,7 +85,6 @@ def clean_text(value: Any) -> str | None:
 
 
 def normalize_code(value: Any) -> str | None:
-    # CNE files may encode 010100 as text or 10100 as a number.
     if value is None or value == "":
         return None
 
@@ -97,10 +104,6 @@ def canonical_territory_code(
     office_code: str,
     freguesia: str | None,
 ) -> str:
-    # Store territories at the scope that the row represents:
-    # district/header rows: 01
-    # CM/AM rows: municipality code 0101
-    # AF rows: parish code 010103
     code = raw_code.zfill(6)
 
     if office_code == "AF" or freguesia:
@@ -121,16 +124,32 @@ def parse_bracket_labels(cell: Any) -> list[str]:
     return [m.strip() for m in re.findall(r"\[([^\]]+)\]", text) if m.strip()]
 
 
+def looks_like_coalition_sigla(sigla: str) -> bool:
+    return "/" in sigla or "." in sigla
+
+
 def safe_gce_sigla(sigla: str) -> str:
-
-    # Some GCE labels collide with official party siglas.
-    # Example: [SIGLA GCE] can contain [L], while L is also Livre.
-    # Store the GCE as GCE-L to avoid corrupting the party entity_type.
-
     if sigla in OFFICIAL_PARTY_HEADERS:
         return f"GCE-{sigla}"
 
     return sigla
+
+
+def unresolved_placeholder_sigla(
+    kind: str,
+    placeholder_letter: str,
+    territory_code: str,
+    office_code: str,
+) -> str:
+    return f"UNRESOLVED-{kind}-{placeholder_letter}-{territory_code}-{office_code}"
+
+
+def unresolved_unlabeled_vote_sigla(
+    column_number: int,
+    territory_code: str,
+    office_code: str,
+) -> str:
+    return f"UNRESOLVED-COL-{column_number}-{territory_code}-{office_code}"
 
 
 def entity_type_for_sigla(sigla: str) -> str:
@@ -163,15 +182,6 @@ class ParsedRow:
 
 
 class AutarquicasMapaIParser:
-    # A:C -> territorial labels
-    # D:H -> office and turnout
-    # I:... -> party/coalition/GCE vote columns
-    #
-    # Important:
-    # [A] [B] [C] map to [SIGLA COL]
-    # [D] [E] [F] [G] map to [SIGLA GCE]
-    # [SIGLA COL] and [SIGLA GCE] are label columns, not vote columns.
-
     HEADER_ROW = 4
     DATA_START_ROW = 5
     FIXED_COLS = 8
@@ -188,6 +198,9 @@ class AutarquicasMapaIParser:
             else self.workbook[self.workbook.sheetnames[0]]
         )
         self.sheet_name = self.sheet.title
+        self.group_headers = [
+            clean_text(c.value) for c in self.sheet[self.HEADER_ROW - 1]
+        ]
         self.headers = [clean_text(c.value) for c in self.sheet[self.HEADER_ROW]]
 
     def result_columns(self) -> list[tuple[int, str]]:
@@ -210,37 +223,73 @@ class AutarquicasMapaIParser:
 
         return result_cols
 
+    def is_column_group(self, idx: int, wanted: str) -> bool:
+        header = self.headers[idx] if idx < len(self.headers) else None
+        group_header = self.group_headers[idx] if idx < len(self.group_headers) else None
+
+        header_norm = clean_text(header)
+        group_norm = clean_text(group_header)
+
+        if wanted == "coalition":
+            return header_norm == "[SIGLA COL]" or group_norm == "SIGLAS COLIGAÇÕES"
+
+        if wanted == "gce":
+            return header_norm == "[SIGLA GCE]" or group_norm == "SIGLAS GCE"
+
+        return False
+
     def row_coalition_labels(self, values: list[Any]) -> list[str]:
         labels: list[str] = []
 
-        for idx, header in enumerate(self.headers):
-            if header != "[SIGLA COL]":
+        for idx, value in enumerate(values):
+            header = self.headers[idx] if idx < len(self.headers) else None
+            header_is_placeholder = (
+                header is not None
+                and re.fullmatch(r"\[[A-Z]\]", header) is not None
+            )
+
+            if self.is_column_group(idx, "coalition"):
+                for label in parse_bracket_labels(value):
+                    if label not in labels:
+                        labels.append(label)
+
+            elif self.is_column_group(idx, "gce"):
                 continue
 
-            if idx >= len(values):
-                continue
-
-            for label in parse_bracket_labels(values[idx]):
-                if label not in labels:
-                    labels.append(label)
+            elif idx >= self.FIXED_COLS and not header_is_placeholder:
+                for label in parse_bracket_labels(value):
+                    if looks_like_coalition_sigla(label) and label not in labels:
+                        labels.append(label)
 
         return labels
 
     def row_gce_labels(self, values: list[Any]) -> list[str]:
         labels: list[str] = []
 
-        for idx, header in enumerate(self.headers):
-            if header != "[SIGLA GCE]":
+        for idx, value in enumerate(values):
+            header = self.headers[idx] if idx < len(self.headers) else None
+            header_is_placeholder = (
+                header is not None
+                and re.fullmatch(r"\[[A-Z]\]", header) is not None
+            )
+
+            if self.is_column_group(idx, "gce"):
+                for label in parse_bracket_labels(value):
+                    label = safe_gce_sigla(label)
+
+                    if label not in labels:
+                        labels.append(label)
+
+            elif self.is_column_group(idx, "coalition"):
                 continue
 
-            if idx >= len(values):
-                continue
+            elif idx >= self.FIXED_COLS and not header_is_placeholder:
+                for label in parse_bracket_labels(value):
+                    if not looks_like_coalition_sigla(label):
+                        label = safe_gce_sigla(label)
 
-            for label in parse_bracket_labels(values[idx]):
-                label = safe_gce_sigla(label)
-
-                if label not in labels:
-                    labels.append(label)
+                        if label not in labels:
+                            labels.append(label)
 
         return labels
 
@@ -269,17 +318,26 @@ class AutarquicasMapaIParser:
             if registered is None or voters is None or blank is None or null is None:
                 continue
 
+            territory_code = canonical_territory_code(
+                raw_code,
+                office_code,
+                freguesia,
+            )
+
             coalition_labels_ordered = self.row_coalition_labels(values)
             gce_labels_ordered = self.row_gce_labels(values)
 
             votes: list[tuple[str, str, int, int]] = []
             coalition_votes_seen = 0
             gce_votes_seen = 0
+            used_vote_columns: set[int] = set()
 
             for display_order, (col_idx, raw_sigla) in enumerate(
                 result_columns,
                 start=1,
             ):
+                used_vote_columns.add(col_idx)
+
                 vote_count = as_int(
                     values[col_idx - 1] if col_idx - 1 < len(values) else None
                 )
@@ -291,25 +349,49 @@ class AutarquicasMapaIParser:
                     placeholder_letter = raw_sigla.strip("[]")
 
                     if placeholder_letter in {"A", "B", "C"}:
-                        sigla = (
-                            coalition_labels_ordered[coalition_votes_seen]
-                            if coalition_votes_seen < len(coalition_labels_ordered)
-                            else raw_sigla
-                        )
+                        if coalition_votes_seen < len(coalition_labels_ordered):
+                            sigla = coalition_labels_ordered[coalition_votes_seen]
+                        else:
+                            if vote_count == 0:
+                                continue
+
+                            sigla = unresolved_placeholder_sigla(
+                                "COL",
+                                placeholder_letter,
+                                territory_code,
+                                office_code,
+                            )
+
                         coalition_votes_seen += 1
                         entity_type = "coalition"
 
                     elif placeholder_letter in {"D", "E", "F", "G"}:
-                        sigla = (
-                            gce_labels_ordered[gce_votes_seen]
-                            if gce_votes_seen < len(gce_labels_ordered)
-                            else raw_sigla
-                        )
+                        if gce_votes_seen < len(gce_labels_ordered):
+                            sigla = gce_labels_ordered[gce_votes_seen]
+                        else:
+                            if vote_count == 0:
+                                continue
+
+                            sigla = unresolved_placeholder_sigla(
+                                "GCE",
+                                placeholder_letter,
+                                territory_code,
+                                office_code,
+                            )
+
                         gce_votes_seen += 1
                         entity_type = "gce"
 
                     else:
-                        sigla = raw_sigla
+                        if vote_count == 0:
+                            continue
+
+                        sigla = unresolved_placeholder_sigla(
+                            "OTHER",
+                            placeholder_letter,
+                            territory_code,
+                            office_code,
+                        )
                         entity_type = "other"
 
                 else:
@@ -318,16 +400,60 @@ class AutarquicasMapaIParser:
 
                 votes.append((sigla, entity_type, vote_count, display_order))
 
+            next_display_order = len(votes) + 1
+
+            for zero_based_idx, value in enumerate(values):
+                col_idx = zero_based_idx + 1
+
+                if col_idx <= self.FIXED_COLS:
+                    continue
+
+                if col_idx in used_vote_columns:
+                    continue
+
+                if self.is_column_group(zero_based_idx, "coalition"):
+                    continue
+
+                if self.is_column_group(zero_based_idx, "gce"):
+                    continue
+
+                header = (
+                    self.headers[zero_based_idx]
+                    if zero_based_idx < len(self.headers)
+                    else None
+                )
+
+                if header and "SIGLA" in header.upper():
+                    continue
+
+                vote_count = as_int(value)
+
+                if vote_count is None:
+                    continue
+
+                if vote_count == 0:
+                    continue
+
+                sigla = unresolved_unlabeled_vote_sigla(
+                    col_idx,
+                    territory_code,
+                    office_code,
+                )
+
+                votes.append(
+                    (
+                        sigla,
+                        "other",
+                        vote_count,
+                        next_display_order,
+                    )
+                )
+                next_display_order += 1
+
             raw = {
                 str(self.headers[i] or f"col_{i + 1}"): values[i]
                 for i in range(min(len(values), len(self.headers)))
             }
-
-            territory_code = canonical_territory_code(
-                raw_code,
-                office_code,
-                freguesia,
-            )
 
             yield ParsedRow(
                 row_no=row_no,
@@ -358,8 +484,6 @@ def get_one(cur, sql: str, params: tuple[Any, ...]) -> Any:
 def build_territory_rows(
     parsed_rows: list[ParsedRow],
 ) -> list[tuple[str, str, str, str | None]]:
-    # Returns unique territories as (code, level_code, name, parent_code).
-    # Geometry stays NULL here. CAOP/PostGIS can enrich it later.
     territories: dict[str, tuple[str, str, str, str | None]] = {}
 
     territories["PT"] = ("PT", "country", "Portugal", None)

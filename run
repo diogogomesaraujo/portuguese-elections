@@ -6,20 +6,21 @@ psql -d elections -f sql/functions_triggers.sql
 psql -d elections -f sql/warehouse_schema.sql
 
 
-
-
-
 export DATABASE_URL='postgresql://localhost/elections'
 
-python etl/import_election_results.py \
-  --file "data/mapa_1_resultados_retificado.xlsx" \
+
+python3 etl/import_election_results.py \
+  --file "data/mapa_1_resultados.xlsx" \
   --election-code AUTARQUICAS_2021
 
 
-
+python3 etl/import_election_results.py \
+  --file "data/mapa_1_resultados_retificado.xlsx" \
+  --election-code AUTARQUICAS_2025
 
 
 psql -d elections -c "CALL dw.refresh_dw();"
+
 
 psql -d elections -c "SELECT COUNT(*) AS territories FROM op.territory;"
 psql -d elections -c "SELECT COUNT(*) AS turnout_rows FROM op.turnout_result;"
@@ -28,3 +29,84 @@ psql -d elections -c "SELECT COUNT(*) AS summary_rows FROM op.result_summary;"
 psql -d elections -c "SELECT COUNT(*) AS rejects FROM op.etl_reject;"
 psql -d elections -c "SELECT COUNT(*) AS dw_vote_rows FROM dw.fact_vote_result;"
 psql -d elections -c "SELECT COUNT(*) AS dw_turnout_rows FROM dw.fact_turnout;"
+
+
+psql -d elections -c "
+SELECT
+    e.code AS election,
+    o.code AS office,
+    COUNT(*) AS turnout_rows
+FROM op.turnout_result tr
+JOIN op.election e ON e.election_id = tr.election_id
+JOIN op.office o ON o.office_id = tr.office_id
+WHERE e.code IN ('AUTARQUICAS_2021', 'AUTARQUICAS_2025')
+GROUP BY e.code, o.code
+ORDER BY e.code, o.code;
+"
+
+
+psql -d elections -c "
+WITH checks AS (
+    SELECT 'active_raw_placeholders' AS check_name, COUNT(*) AS bad_count
+    FROM op.vote_result vr
+    JOIN op.candidacy c ON c.candidacy_id = vr.candidacy_id
+    JOIN op.political_entity pe ON pe.political_entity_id = c.political_entity_id
+    WHERE pe.sigla ~ '^\[[A-Z]\]$'
+
+    UNION ALL
+
+    SELECT 'etl_rejects', COUNT(*)
+    FROM op.etl_reject
+
+    UNION ALL
+
+    SELECT 'turnout_math_errors', COUNT(*)
+    FROM op.result_summary rs
+    JOIN op.turnout_result tr
+      ON tr.election_id = rs.election_id
+     AND tr.office_id = rs.office_id
+     AND tr.territory_id = rs.territory_id
+    WHERE rs.candidate_votes <> tr.voters - tr.blank_votes - tr.null_votes
+
+    UNION ALL
+
+    SELECT 'vote_context_errors', COUNT(*)
+    FROM op.vote_result vr
+    JOIN op.candidacy c ON c.candidacy_id = vr.candidacy_id
+    WHERE c.election_id <> vr.election_id
+       OR c.office_id <> vr.office_id
+       OR c.territory_id <> vr.territory_id
+
+    UNION ALL
+
+    SELECT 'turnout_without_votes', COUNT(*)
+    FROM op.turnout_result tr
+    LEFT JOIN op.vote_result vr
+      ON vr.election_id = tr.election_id
+     AND vr.office_id = tr.office_id
+     AND vr.territory_id = tr.territory_id
+    WHERE vr.candidacy_id IS NULL
+
+    UNION ALL
+
+    SELECT 'dw_vote_mismatch', abs(
+        (SELECT COUNT(*) FROM op.vote_result)
+        -
+        (SELECT COUNT(*) FROM dw.fact_vote_result)
+    )
+
+    UNION ALL
+
+    SELECT 'dw_turnout_mismatch', abs(
+        (SELECT COUNT(*) FROM op.turnout_result)
+        -
+        (SELECT COUNT(*) FROM dw.fact_turnout)
+    )
+)
+SELECT
+    check_name,
+    bad_count,
+    CASE WHEN bad_count = 0 THEN 'OK' ELSE 'FAIL' END AS status
+FROM checks
+ORDER BY check_name;
+"
