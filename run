@@ -1,0 +1,30 @@
+psql -d elections -f sql/reset.sql
+psql -d elections -f sql/extensions.sql
+psql -d elections -f sql/operational_schema.sql
+psql -d elections -f sql/init.sql
+psql -d elections -f sql/functions_triggers.sql
+psql -d elections -f sql/warehouse_schema.sql
+
+
+
+
+
+export DATABASE_URL='postgresql://localhost/elections'
+
+python etl/import_election_results.py \
+  --file "data/mapa_1_resultados_retificado.xlsx" \
+  --election-code AUTARQUICAS_2021
+
+
+
+
+
+psql -d elections -c "CALL dw.refresh_dw();"
+
+psql -d elections -c "SELECT COUNT(*) AS territories FROM op.territory;"
+psql -d elections -c "SELECT COUNT(*) AS turnout_rows FROM op.turnout_result;"
+psql -d elections -c "SELECT COUNT(*) AS vote_rows FROM op.vote_result;"
+psql -d elections -c "SELECT COUNT(*) AS summary_rows FROM op.result_summary;"
+psql -d elections -c "SELECT COUNT(*) AS rejects FROM op.etl_reject;"
+psql -d elections -c "SELECT COUNT(*) AS dw_vote_rows FROM dw.fact_vote_result;"
+psql -d elections -c "SELECT COUNT(*) AS dw_turnout_rows FROM dw.fact_turnout;"
