@@ -9,6 +9,20 @@ psql -d elections -f sql/warehouse_schema.sql
 export DATABASE_URL='postgresql://localhost/elections'
 
 
+# Import spatial source tables.
+# This file is large, so ON_ERROR_STOP makes failures explicit.
+psql -d elections -c "
+DROP TABLE IF EXISTS public.cont_freguesias CASCADE;
+DROP TABLE IF EXISTS public.raa_cen_ori_freguesias CASCADE;
+DROP TABLE IF EXISTS public.raa_oci_freguesias CASCADE;
+DROP TABLE IF EXISTS public.ram_freguesias CASCADE;
+"
+psql -d elections -v ON_ERROR_STOP=1 -f data/spatial_class_tables.sql
+
+# Create/update spatial enrichment procedure.
+psql -d elections -f sql/import_spatial.sql
+
+
 mkdir -p data/converted
 
 /Applications/LibreOffice.app/Contents/MacOS/soffice --headless \
@@ -31,6 +45,9 @@ python3 etl/import_election_results.py \
   --file "data/mapa_1_resultados_retificado.xlsx" \
   --election-code AUTARQUICAS_2025
 
+
+# Enrich op.territory with geometry after all election territories exist.
+psql -d elections -c "CALL op.load_territories_from_caop();"
 
 psql -d elections -c "CALL dw.refresh_dw();"
 
@@ -115,6 +132,200 @@ WITH checks AS (
         -
         (SELECT COUNT(*) FROM dw.fact_turnout)
     )
+)
+SELECT
+    check_name,
+    bad_count,
+    CASE WHEN bad_count = 0 THEN 'OK' ELSE 'FAIL' END AS status
+FROM checks
+ORDER BY check_name;
+"
+
+
+# Spatial coverage report.
+psql -d elections -c "
+SELECT
+    tl.code AS level,
+    COUNT(*) AS territories,
+    COUNT(*) FILTER (WHERE t.geom IS NOT NULL) AS with_geom,
+    COUNT(*) FILTER (WHERE t.geom IS NULL) AS without_geom,
+    round(
+        100.0 * COUNT(*) FILTER (WHERE t.geom IS NOT NULL) / NULLIF(COUNT(*), 0),
+        2
+    ) AS geom_coverage_pct
+FROM op.territory t
+JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+GROUP BY tl.code
+ORDER BY MIN(tl.depth);
+"
+
+
+# Parish geometry coverage by election.
+# Parish gaps are allowed for older elections because parish boundaries changed over time.
+psql -d elections -c "
+SELECT
+    e.code AS election,
+    COUNT(DISTINCT t.territory_id) AS parishes_used,
+    COUNT(DISTINCT t.territory_id) FILTER (WHERE t.geom IS NOT NULL) AS parishes_with_geom,
+    COUNT(DISTINCT t.territory_id) FILTER (WHERE t.geom IS NULL) AS parishes_without_geom,
+    round(
+        100.0 * COUNT(DISTINCT t.territory_id) FILTER (WHERE t.geom IS NOT NULL)
+        / NULLIF(COUNT(DISTINCT t.territory_id), 0),
+        2
+    ) AS parish_geom_coverage_pct
+FROM op.turnout_result tr
+JOIN op.election e ON e.election_id = tr.election_id
+JOIN op.office o ON o.office_id = tr.office_id
+JOIN op.territory t ON t.territory_id = tr.territory_id
+JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+WHERE o.code = 'AF'
+  AND tl.code = 'parish'
+GROUP BY e.code
+ORDER BY e.code;
+"
+
+
+# Spatial consistency check.
+# Allows election-only parish placeholders directly under districts.
+psql -d elections -c "
+WITH checks AS (
+    SELECT
+        'country_has_geom' AS check_name,
+        COUNT(*) FILTER (WHERE t.geom IS NULL) AS bad_count
+    FROM op.territory t
+    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+    WHERE tl.code = 'country'
+
+    UNION ALL
+
+    SELECT
+        'districts_have_geom',
+        COUNT(*) FILTER (WHERE t.geom IS NULL)
+    FROM op.territory t
+    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+    WHERE tl.code = 'district'
+
+    UNION ALL
+
+    SELECT
+        'municipalities_have_geom',
+        COUNT(*) FILTER (WHERE t.geom IS NULL)
+    FROM op.territory t
+    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+    WHERE tl.code = 'municipality'
+
+    UNION ALL
+
+    SELECT
+        'invalid_geometries',
+        COUNT(*)
+    FROM op.territory
+    WHERE geom IS NOT NULL
+      AND NOT ST_IsValid(geom)
+
+    UNION ALL
+
+    SELECT
+        'empty_geometries',
+        COUNT(*)
+    FROM op.territory
+    WHERE geom IS NOT NULL
+      AND ST_IsEmpty(geom)
+
+    UNION ALL
+
+    SELECT
+        'wrong_srid',
+        COUNT(*)
+    FROM op.territory
+    WHERE geom IS NOT NULL
+      AND ST_SRID(geom) <> 4326
+
+    UNION ALL
+
+    SELECT
+        'fake_municipality_xx00',
+        COUNT(*)
+    FROM op.territory t
+    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+    WHERE tl.code = 'municipality'
+      AND t.code LIKE '__00'
+
+    UNION ALL
+
+    SELECT
+        'orphan_non_country_territories',
+        COUNT(*)
+    FROM op.territory t
+    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+    WHERE tl.code <> 'country'
+      AND t.parent_id IS NULL
+
+    UNION ALL
+
+    SELECT
+        'bad_parent_depth_real_errors',
+        COUNT(*)
+    FROM op.territory child
+    JOIN op.territory parent ON parent.territory_id = child.parent_id
+    JOIN op.territory_level cl ON cl.territory_level_id = child.level_id
+    JOIN op.territory_level pl ON pl.territory_level_id = parent.level_id
+    WHERE cl.depth <> pl.depth + 1
+      AND NOT (
+          cl.code = 'parish'
+          AND pl.code = 'district'
+          AND (
+              child.code LIKE '____00'
+              OR child.code LIKE '__0000'
+          )
+      )
+
+    UNION ALL
+
+    SELECT
+        'non_parish_without_geom_used_in_results',
+        COUNT(DISTINCT t.territory_id)
+    FROM op.turnout_result tr
+    JOIN op.territory t ON t.territory_id = tr.territory_id
+    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+    WHERE tl.code IN ('country', 'district', 'municipality')
+      AND t.geom IS NULL
+
+    UNION ALL
+
+    SELECT
+        'municipality_geom_not_covered_by_district',
+        COUNT(*)
+    FROM op.territory m
+    JOIN op.territory d ON d.territory_id = m.parent_id
+    JOIN op.territory_level ml ON ml.territory_level_id = m.level_id
+    JOIN op.territory_level dl ON dl.territory_level_id = d.level_id
+    WHERE ml.code = 'municipality'
+      AND dl.code = 'district'
+      AND m.geom IS NOT NULL
+      AND d.geom IS NOT NULL
+      AND NOT (
+          ST_Covers(d.geom, m.geom)
+          OR ST_Area(ST_Difference(m.geom, d.geom)::geography) < 100
+      )
+
+    UNION ALL
+
+    SELECT
+        'parish_geom_not_covered_by_municipality',
+        COUNT(*)
+    FROM op.territory f
+    JOIN op.territory m ON m.territory_id = f.parent_id
+    JOIN op.territory_level fl ON fl.territory_level_id = f.level_id
+    JOIN op.territory_level ml ON ml.territory_level_id = m.level_id
+    WHERE fl.code = 'parish'
+      AND ml.code = 'municipality'
+      AND f.geom IS NOT NULL
+      AND m.geom IS NOT NULL
+      AND NOT (
+          ST_Covers(m.geom, f.geom)
+          OR ST_Area(ST_Difference(f.geom, m.geom)::geography) < 100
+      )
 )
 SELECT
     check_name,

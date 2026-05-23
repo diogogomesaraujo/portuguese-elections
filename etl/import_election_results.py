@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -84,6 +85,20 @@ def clean_text(value: Any) -> str | None:
     return s or None
 
 
+def normalize_header_text(value: Any) -> str:
+    text = clean_text(value)
+
+    if not text:
+        return ""
+
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.upper().strip()
+    text = re.sub(r"\s+", " ", text)
+
+    return text
+
+
 def normalize_code(value: Any) -> str | None:
     if value is None or value == "":
         return None
@@ -106,7 +121,21 @@ def canonical_territory_code(
 ) -> str:
     code = raw_code.zfill(6)
 
-    if office_code == "AF" or freguesia:
+    # AF rows are parish-scope.
+    # Keep the exact source code, including election-only xxxx00 placeholders.
+    if office_code == "AF":
+        return code
+
+    # CM/AM rows are municipality-scope, even when old CNE files put
+    # footnote-like values such as (1), (2), (8) in the FREG column.
+    if office_code in {"CM", "AM"}:
+        if code.endswith("0000"):
+            return code[:2]
+
+        return code[:4]
+
+    # Fallback for future offices.
+    if freguesia and not re.fullmatch(r"\(\d+\)", freguesia.strip()):
         return code
 
     if code.endswith("0000"):
@@ -182,13 +211,13 @@ class ParsedRow:
 
 
 class AutarquicasMapaIParser:
-    HEADER_ROW = 4
-    DATA_START_ROW = 5
     FIXED_COLS = 8
 
     def __init__(self, path: Path, sheet_name: str | None = None):
         if path.suffix.lower() == ".xls":
-            raise SystemExit("Wrong file format. Use the .xlsx file.")
+            raise SystemExit(
+                "Wrong file format. Convert .xls to .xlsx first with LibreOffice."
+            )
 
         self.path = path
         self.workbook = load_workbook(path, read_only=True, data_only=True)
@@ -198,10 +227,76 @@ class AutarquicasMapaIParser:
             else self.workbook[self.workbook.sheetnames[0]]
         )
         self.sheet_name = self.sheet.title
+
+        self.header_row = self.detect_header_row()
+        self.data_start_row = self.header_row + 1
+
         self.group_headers = [
-            clean_text(c.value) for c in self.sheet[self.HEADER_ROW - 1]
+            clean_text(c.value) for c in self.sheet[self.header_row - 1]
         ]
-        self.headers = [clean_text(c.value) for c in self.sheet[self.HEADER_ROW]]
+        self.headers = [clean_text(c.value) for c in self.sheet[self.header_row]]
+        # Some CNE 2021 files have row 4 as:
+        # CÓD, CONC, FREG, A, B.E., ...
+        # but data rows still are:
+        # CÓD, CONC, FREG, ÓRG, inscritos, votantes, brancos, nulos, party...
+        # Force the first 8 headers to the operational schema.
+        if len(self.headers) >= 8:
+            first_three = [normalize_header_text(v) for v in self.headers[:3]]
+
+            if first_three == ["COD", "CONC", "FREG"]:
+                self.headers[0:8] = [
+                    "CÓD",
+                    "CONC",
+                    "FREG",
+                    "ÓRG",
+                    "inscritos",
+                    "votantes",
+                    "brancos",
+                    "nulos",
+                ]
+
+    def detect_header_row(self) -> int:
+        for row_no in range(1, 30):
+            row_values = [normalize_header_text(c.value) for c in self.sheet[row_no]]
+
+            has_code = any(
+                v in {"COD", "COD.", "CODIGO", "CODIGO.", "CÓD", "CÓD."}
+                for v in row_values
+            )
+            has_conc = "CONC" in row_values
+            has_freg = "FREG" in row_values
+
+            has_office = any(
+                v in {"ORG", "ORG.", "ORGAO", "ORGAO.", "ÓRG", "ÓRG."}
+                for v in row_values
+            )
+            has_registered = any(v in {"INSC", "INSCRITOS"} for v in row_values)
+            has_voters = any(v in {"VOT", "VOTANTES"} for v in row_values)
+
+            # 2017/2025 standard: full fixed-column header row.
+            if has_code and has_office and has_registered and has_voters:
+                return row_no
+
+            # 2021 original: row 4 only has CÓD/CONC/FREG, while row 3 has
+            # ÓRG/INSC/VOT as group headers. Data rows still follow the same
+            # fixed column order.
+            if has_code and has_conc and has_freg:
+                return row_no
+
+        debug_rows: list[str] = []
+
+        for row_no in range(1, 12):
+            row_values = [normalize_header_text(c.value) for c in self.sheet[row_no]]
+            non_empty = [v for v in row_values if v]
+
+            if non_empty:
+                debug_rows.append(f"row {row_no}: {non_empty}")
+
+        raise RuntimeError(
+            f"Could not detect header row in sheet {self.sheet_name}. "
+            "Expected a row containing code headers.\n"
+            + "\n".join(debug_rows)
+        )
 
     def result_columns(self) -> list[tuple[int, str]]:
         result_cols: list[tuple[int, str]] = []
@@ -297,8 +392,8 @@ class AutarquicasMapaIParser:
         result_columns = self.result_columns()
 
         for row_no, row in enumerate(
-            self.sheet.iter_rows(min_row=self.DATA_START_ROW, values_only=True),
-            start=self.DATA_START_ROW,
+            self.sheet.iter_rows(min_row=self.data_start_row, values_only=True),
+            start=self.data_start_row,
         ):
             values = list(row)
 
@@ -440,14 +535,7 @@ class AutarquicasMapaIParser:
                     office_code,
                 )
 
-                votes.append(
-                    (
-                        sigla,
-                        "other",
-                        vote_count,
-                        next_display_order,
-                    )
-                )
+                votes.append((sigla, "other", vote_count, next_display_order))
                 next_display_order += 1
 
             raw = {
@@ -505,6 +593,37 @@ def build_territory_rows(
             ),
         )
 
+        # District/header placeholder rows such as 030000 must not create
+        # fake municipalities like 0300.
+        # But old CNE files may contain AF rows with xx0000 as real
+        # election-source placeholder parish rows.
+        if raw.endswith("0000"):
+            if pr.office_code == "AF" and pr.freguesia:
+                territories[parish_code] = (
+                    parish_code,
+                    "parish",
+                    pr.freguesia,
+                    district_code,
+                )
+
+            continue
+
+        # Invalid municipality code xx00.
+        # Do not create fake municipality 0300/0400/etc.
+        if municipality_code.endswith("00"):
+            # But if the row is AF and has a freguesia label, keep the exact
+            # source code as an election-only parish placeholder. It will not
+            # receive CAOP geometry, but the official election row can load.
+            if pr.office_code == "AF" and pr.freguesia:
+                territories[parish_code] = (
+                    parish_code,
+                    "parish",
+                    pr.freguesia,
+                    district_code,
+                )
+
+            continue
+
         territories[municipality_code] = (
             municipality_code,
             "municipality",
@@ -512,7 +631,10 @@ def build_territory_rows(
             district_code,
         )
 
-        if pr.freguesia:
+        # For AF rows, keep the exact source parish code, including xxxx00
+        # placeholders. They are valid election-source rows, even if CAOP
+        # cannot match them spatially.
+        if pr.office_code == "AF" and pr.freguesia:
             territories[parish_code] = (
                 parish_code,
                 "parish",
