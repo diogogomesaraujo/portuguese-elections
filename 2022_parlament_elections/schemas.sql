@@ -1,0 +1,3 @@
+CREATE SCHEMA public;
+CREATE SCHEMA staging;
+CREATE SCHEMA warehouse;
