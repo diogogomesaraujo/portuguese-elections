@@ -1,5 +1,6 @@
 CREATE SCHEMA IF NOT EXISTS wh;
 
+DROP TABLE IF EXISTS wh.fact_seat_result CASCADE;
 DROP TABLE IF EXISTS wh.fact_vote_result CASCADE;
 DROP TABLE IF EXISTS wh.fact_turnout CASCADE;
 DROP TABLE IF EXISTS wh.dim_political_entity CASCADE;
@@ -74,6 +75,7 @@ SELECT
     tr.blank_votes,
     tr.null_votes,
     rs.candidate_votes,
+    rs.total_seats,
     rs.turnout_rate,
     rs.blank_rate,
     rs.null_rate
@@ -120,11 +122,41 @@ ON wh.fact_vote_result(territory_key);
 CREATE INDEX IF NOT EXISTS wh_fact_vote_result_entity_idx
 ON wh.fact_vote_result(political_entity_key);
 
+CREATE TABLE wh.fact_seat_result AS
+SELECT
+    sr.election_id AS election_key,
+    sr.office_id AS office_key,
+    sr.territory_id AS territory_key,
+    c.political_entity_id AS political_entity_key,
+    sr.seats,
+    sc.seats AS total_seats,
+    CASE
+        WHEN sc.seats > 0
+        THEN round(sr.seats::numeric / sc.seats, 6)
+    END AS seat_share,
+    sr.method
+FROM op.seat_result sr
+JOIN op.candidacy c ON c.candidacy_id = sr.candidacy_id
+LEFT JOIN op.seat_count sc
+  ON sc.election_id = sr.election_id
+ AND sc.office_id = sr.office_id
+ AND sc.territory_id = sr.territory_id;
+
+ALTER TABLE wh.fact_seat_result
+ADD PRIMARY KEY (election_key, office_key, territory_key, political_entity_key);
+
+CREATE INDEX IF NOT EXISTS wh_fact_seat_result_territory_idx
+ON wh.fact_seat_result(territory_key);
+
+CREATE INDEX IF NOT EXISTS wh_fact_seat_result_entity_idx
+ON wh.fact_seat_result(political_entity_key);
+
 CREATE OR REPLACE PROCEDURE wh.refresh_wh()
 LANGUAGE plpgsql
 AS $$
 BEGIN
     TRUNCATE
+        wh.fact_seat_result,
         wh.fact_vote_result,
         wh.fact_turnout,
         wh.dim_political_entity,
@@ -182,6 +214,7 @@ BEGIN
         tr.blank_votes,
         tr.null_votes,
         rs.candidate_votes,
+        rs.total_seats,
         rs.turnout_rate,
         rs.blank_rate,
         rs.null_rate
@@ -212,5 +245,25 @@ BEGIN
       ON rs.election_id = vr.election_id
      AND rs.office_id = vr.office_id
      AND rs.territory_id = vr.territory_id;
+
+    INSERT INTO wh.fact_seat_result
+    SELECT
+        sr.election_id,
+        sr.office_id,
+        sr.territory_id,
+        c.political_entity_id,
+        sr.seats,
+        sc.seats,
+        CASE
+            WHEN sc.seats > 0
+            THEN round(sr.seats::numeric / sc.seats, 6)
+        END AS seat_share,
+        sr.method
+    FROM op.seat_result sr
+    JOIN op.candidacy c ON c.candidacy_id = sr.candidacy_id
+    LEFT JOIN op.seat_count sc
+      ON sc.election_id = sr.election_id
+     AND sc.office_id = sr.office_id
+     AND sc.territory_id = sr.territory_id;
 END;
 $$;

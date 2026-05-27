@@ -740,7 +740,8 @@ def main() -> None:
                 vote_cells += 1
 
             rows_loaded += 1
-
+        cur.execute("CALL op.populate_seat_count();")
+        cur.execute("CALL op.calculate_seat_results()")
         cur.execute("CALL wh.refresh_wh()")
 
     conn.close()

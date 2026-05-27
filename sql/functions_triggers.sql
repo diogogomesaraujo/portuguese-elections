@@ -110,6 +110,7 @@ BEGIN
         blank_votes,
         null_votes,
         candidate_votes,
+        total_seats,
         turnout_rate,
         blank_rate,
         null_rate,
@@ -124,6 +125,7 @@ BEGIN
         turnout.blank_votes,
         turnout.null_votes,
         COALESCE(SUM(vote.votes), 0)::int AS candidate_votes,
+        COALESCE(seat_count.seats, 0) AS total_seats,
         CASE
             WHEN turnout.registered_voters > 0
             THEN round(turnout.voters::numeric / turnout.registered_voters, 6)
@@ -139,12 +141,16 @@ BEGIN
         now()
     FROM op.turnout_result turnout
     LEFT JOIN op.vote_result vote
-      ON vote.election_id = turnout.election_id
-     AND vote.office_id = turnout.office_id
-     AND vote.territory_id = turnout.territory_id
+    ON vote.election_id = turnout.election_id
+    AND vote.office_id = turnout.office_id
+    AND vote.territory_id = turnout.territory_id
+    LEFT JOIN op.seat_count seat_count
+    ON seat_count.election_id = turnout.election_id
+    AND seat_count.office_id = turnout.office_id
+    AND seat_count.territory_id = turnout.territory_id
     WHERE turnout.election_id = p_election_id
-      AND turnout.office_id = p_office_id
-      AND turnout.territory_id = p_territory_id
+    AND turnout.office_id = p_office_id
+    AND turnout.territory_id = p_territory_id
     GROUP BY
         turnout.election_id,
         turnout.office_id,
@@ -152,7 +158,8 @@ BEGIN
         turnout.registered_voters,
         turnout.voters,
         turnout.blank_votes,
-        turnout.null_votes
+        turnout.null_votes,
+        seat_count.seats
     ON CONFLICT (election_id, office_id, territory_id)
     DO UPDATE SET
         registered_voters = EXCLUDED.registered_voters,
@@ -163,6 +170,7 @@ BEGIN
         turnout_rate = EXCLUDED.turnout_rate,
         blank_rate = EXCLUDED.blank_rate,
         null_rate = EXCLUDED.null_rate,
+        total_seats = EXCLUDED.total_seats,
         updated_at = now();
 
     DELETE FROM op.result_summary summary
@@ -470,5 +478,250 @@ BEGIN
         votes = EXCLUDED.votes,
         import_file_id = EXCLUDED.import_file_id,
         updated_at = now();
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE op.calculate_seat_results()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    DELETE FROM op.seat_result
+    WHERE method = 'dhondt_calculated';
+
+    WITH quotients AS (
+        SELECT
+            vote.election_id,
+            vote.office_id,
+            vote.territory_id,
+            vote.candidacy_id,
+            vote.votes,
+            divisor.n AS divisor,
+            vote.votes::numeric / divisor.n AS quotient
+        FROM op.vote_result vote
+        JOIN op.seat_count seat_count
+          ON seat_count.election_id = vote.election_id
+         AND seat_count.office_id = vote.office_id
+         AND seat_count.territory_id = vote.territory_id
+        CROSS JOIN LATERAL generate_series(1, seat_count.seats) AS divisor(n)
+        WHERE vote.votes > 0
+    ),
+
+    ranked AS (
+        SELECT
+            quotients.*,
+            row_number() OVER (
+                PARTITION BY
+                    election_id,
+                    office_id,
+                    territory_id
+                ORDER BY
+                    quotient DESC,
+                    votes DESC,
+                    candidacy_id
+            ) AS quotient_rank
+        FROM quotients
+    ),
+
+    allocated AS (
+        SELECT
+            ranked.election_id,
+            ranked.office_id,
+            ranked.territory_id,
+            ranked.candidacy_id,
+            COUNT(*)::int AS seats
+        FROM ranked
+        JOIN op.seat_count seat_count
+          ON seat_count.election_id = ranked.election_id
+         AND seat_count.office_id = ranked.office_id
+         AND seat_count.territory_id = ranked.territory_id
+        WHERE ranked.quotient_rank <= seat_count.seats
+        GROUP BY
+            ranked.election_id,
+            ranked.office_id,
+            ranked.territory_id,
+            ranked.candidacy_id
+    )
+
+    INSERT INTO op.seat_result (
+        election_id,
+        office_id,
+        territory_id,
+        candidacy_id,
+        seats,
+        method,
+        updated_at
+    )
+    SELECT
+        election_id,
+        office_id,
+        territory_id,
+        candidacy_id,
+        seats,
+        'dhondt_calculated',
+        now()
+    FROM allocated
+    ON CONFLICT (election_id, office_id, territory_id, candidacy_id)
+    DO UPDATE SET
+        seats = EXCLUDED.seats,
+        method = EXCLUDED.method,
+        updated_at = now();
+END;
+$$;
+
+
+CREATE OR REPLACE PROCEDURE op.populate_seat_count()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    DELETE FROM op.seat_count
+    WHERE source IN (
+        'portugal_cm_rule',
+        'portugal_af_rule',
+        'portugal_am_direct_rule'
+    );
+
+    -- CM: Câmara Municipal
+    -- Total seats = president + vereadores.
+    INSERT INTO op.seat_count (
+        election_id,
+        office_id,
+        territory_id,
+        seats,
+        source
+    )
+    SELECT
+        tr.election_id,
+        tr.office_id,
+        tr.territory_id,
+        CASE
+            WHEN lower(unaccent(t.name)) = 'lisboa' THEN 17
+            WHEN lower(unaccent(t.name)) = 'porto' THEN 13
+            WHEN tr.registered_voters >= 100000 THEN 11
+            WHEN tr.registered_voters > 50000 THEN 9
+            WHEN tr.registered_voters > 10000 THEN 7
+            ELSE 5
+        END AS seats,
+        'portugal_cm_rule'
+    FROM op.turnout_result tr
+    JOIN op.office o
+      ON o.office_id = tr.office_id
+    JOIN op.territory t
+      ON t.territory_id = tr.territory_id
+    WHERE o.code = 'CM'
+    ON CONFLICT (election_id, office_id, territory_id)
+    DO UPDATE SET
+        seats = EXCLUDED.seats,
+        source = EXCLUDED.source;
+
+    -- AF: Assembleia de Freguesia.
+    INSERT INTO op.seat_count (
+        election_id,
+        office_id,
+        territory_id,
+        seats,
+        source
+    )
+    SELECT
+        tr.election_id,
+        tr.office_id,
+        tr.territory_id,
+        CASE
+            WHEN tr.registered_voters > 30000 THEN
+                CASE
+                    WHEN (
+                        19 + CEIL((tr.registered_voters - 30000)::numeric / 10000)::int
+                    ) % 2 = 0
+                    THEN
+                        19 + CEIL((tr.registered_voters - 30000)::numeric / 10000)::int + 1
+                    ELSE
+                        19 + CEIL((tr.registered_voters - 30000)::numeric / 10000)::int
+                END
+            WHEN tr.registered_voters > 20000 THEN 19
+            WHEN tr.registered_voters > 5000 THEN 13
+            WHEN tr.registered_voters > 1000 THEN 9
+            ELSE 7
+        END AS seats,
+        'portugal_af_rule'
+    FROM op.turnout_result tr
+    JOIN op.office o
+      ON o.office_id = tr.office_id
+    WHERE o.code = 'AF'
+    ON CONFLICT (election_id, office_id, territory_id)
+    DO UPDATE SET
+        seats = EXCLUDED.seats,
+        source = EXCLUDED.source;
+
+    -- AM: Assembleia Municipal, directly elected members only.
+    -- Rule:
+    -- direct members > number of parish presidents
+    -- direct members >= 3 * number of CM members
+    INSERT INTO op.seat_count (
+        election_id,
+        office_id,
+        territory_id,
+        seats,
+        source
+    )
+    WITH cm_seats AS (
+        SELECT
+            tr.election_id,
+            tr.territory_id,
+            CASE
+                WHEN lower(unaccent(t.name)) = 'lisboa' THEN 17
+                WHEN lower(unaccent(t.name)) = 'porto' THEN 13
+                WHEN tr.registered_voters >= 100000 THEN 11
+                WHEN tr.registered_voters > 50000 THEN 9
+                WHEN tr.registered_voters > 10000 THEN 7
+                ELSE 5
+            END AS cm_members
+        FROM op.turnout_result tr
+        JOIN op.office o
+          ON o.office_id = tr.office_id
+        JOIN op.territory t
+          ON t.territory_id = tr.territory_id
+        WHERE o.code = 'CM'
+    ),
+
+    parish_counts AS (
+        SELECT
+            tr.election_id,
+            municipality.territory_id AS municipality_id,
+            COUNT(*)::int AS parish_presidents
+        FROM op.turnout_result tr
+        JOIN op.office o
+          ON o.office_id = tr.office_id
+        JOIN op.territory parish
+          ON parish.territory_id = tr.territory_id
+        JOIN op.territory municipality
+          ON municipality.territory_id = parish.parent_id
+        WHERE o.code = 'AF'
+        GROUP BY
+            tr.election_id,
+            municipality.territory_id
+    )
+
+    SELECT
+        tr.election_id,
+        tr.office_id,
+        tr.territory_id,
+        GREATEST(
+            COALESCE(pc.parish_presidents, 0) + 1,
+            3 * cm.cm_members
+        ) AS seats,
+        'portugal_am_direct_rule'
+    FROM op.turnout_result tr
+    JOIN op.office o
+      ON o.office_id = tr.office_id
+    JOIN cm_seats cm
+      ON cm.election_id = tr.election_id
+     AND cm.territory_id = tr.territory_id
+    LEFT JOIN parish_counts pc
+      ON pc.election_id = tr.election_id
+     AND pc.municipality_id = tr.territory_id
+    WHERE o.code = 'AM'
+    ON CONFLICT (election_id, office_id, territory_id)
+    DO UPDATE SET
+        seats = EXCLUDED.seats,
+        source = EXCLUDED.source;
 END;
 $$;

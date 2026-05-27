@@ -129,6 +129,15 @@ CREATE TABLE IF NOT EXISTS op.seat_result (
     PRIMARY KEY (election_id, office_id, territory_id, candidacy_id)
 );
 
+CREATE TABLE IF NOT EXISTS op.seat_count (
+    election_id bigint NOT NULL REFERENCES op.election(election_id) ON DELETE CASCADE,
+    office_id bigint NOT NULL REFERENCES op.office(office_id),
+    territory_id bigint NOT NULL REFERENCES op.territory(territory_id),
+    seats int NOT NULL CHECK (seats > 0),
+    source text NOT NULL DEFAULT 'manual',
+    PRIMARY KEY (election_id, office_id, territory_id)
+);
+
 CREATE TABLE IF NOT EXISTS op.result_summary (
     election_id bigint NOT NULL REFERENCES op.election(election_id) ON DELETE CASCADE,
     office_id bigint NOT NULL REFERENCES op.office(office_id),
@@ -138,6 +147,7 @@ CREATE TABLE IF NOT EXISTS op.result_summary (
     blank_votes int NOT NULL DEFAULT 0,
     null_votes int NOT NULL DEFAULT 0,
     candidate_votes int NOT NULL DEFAULT 0,
+    total_seats int NOT NULL DEFAULT 0,
     turnout_rate numeric(10,6),
     blank_rate numeric(10,6),
     null_rate numeric(10,6),

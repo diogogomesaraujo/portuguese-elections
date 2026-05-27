@@ -51,6 +51,9 @@ python3 etl/import_election_results.py \
 # Enrich op.territory with geometry after all election territories exist.
 psql -d elections -c "CALL op.load_territories_from_caop();"
 
+# Calculate seats with D'Hondt where op.seat_count exists.
+psql -d elections -c "CALL op.calculate_seat_results();"
+
 psql -d elections -c "CALL wh.refresh_wh();"
 
 
@@ -60,6 +63,9 @@ psql -d elections -c "SELECT COUNT(*) AS vote_rows FROM op.vote_result;"
 psql -d elections -c "SELECT COUNT(*) AS summary_rows FROM op.result_summary;"
 psql -d elections -c "SELECT COUNT(*) AS wh_vote_rows FROM wh.fact_vote_result;"
 psql -d elections -c "SELECT COUNT(*) AS wh_turnout_rows FROM wh.fact_turnout;"
+psql -d elections -c "SELECT COUNT(*) AS seat_count_rows FROM op.seat_count;"
+psql -d elections -c "SELECT COUNT(*) AS seat_result_rows FROM op.seat_result;"
+psql -d elections -c "SELECT COUNT(*) AS wh_seat_rows FROM wh.fact_seat_result;"
 
 
 psql -d elections -c "
@@ -127,6 +133,47 @@ WITH checks AS (
         (SELECT COUNT(*) FROM op.turnout_result)
         -
         (SELECT COUNT(*) FROM wh.fact_turnout)
+    )
+
+    UNION ALL
+
+    SELECT 'seat_result_without_seat_count', COUNT(*)
+    FROM op.seat_result sr
+    LEFT JOIN op.seat_count sc
+      ON sc.election_id = sr.election_id
+     AND sc.office_id = sr.office_id
+     AND sc.territory_id = sr.territory_id
+    WHERE sc.election_id IS NULL
+
+    UNION ALL
+
+    SELECT 'seat_allocation_errors', COUNT(*)
+    FROM (
+        SELECT
+            sc.election_id,
+            sc.office_id,
+            sc.territory_id,
+            sc.seats AS expected_seats,
+            COALESCE(SUM(sr.seats), 0) AS allocated_seats
+        FROM op.seat_count sc
+        LEFT JOIN op.seat_result sr
+          ON sr.election_id = sc.election_id
+         AND sr.office_id = sc.office_id
+         AND sr.territory_id = sc.territory_id
+        GROUP BY
+            sc.election_id,
+            sc.office_id,
+            sc.territory_id,
+            sc.seats
+    ) x
+    WHERE allocated_seats <> expected_seats
+
+    UNION ALL
+
+    SELECT 'wh_seat_mismatch', abs(
+        (SELECT COUNT(*) FROM op.seat_result)
+        -
+        (SELECT COUNT(*) FROM wh.fact_seat_result)
     )
 )
 SELECT
