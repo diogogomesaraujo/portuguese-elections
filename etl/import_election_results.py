@@ -191,7 +191,7 @@ class ParsedRow:
     raw: dict[str, Any]
 
 
-class AutarquicasMapaIParser:
+class Parser:
     FIXED_COLS = 8
 
     def __init__(self, path: Path, sheet_name: str | None = None):
@@ -662,7 +662,7 @@ def main() -> None:
             "DATABASE_URL missing. Set it in .env/export it or pass --database-url."
         )
 
-    parser = AutarquicasMapaIParser(args.file, args.sheet)
+    parser = Parser(args.file, args.sheet)
     file_hash = sha256_file(args.file)
 
     conn = psycopg2.connect(args.database_url)
@@ -741,7 +741,7 @@ def main() -> None:
 
             rows_loaded += 1
 
-        cur.execute("CALL dw.refresh_dw()")
+        cur.execute("CALL wh.refresh_wh()")
 
     conn.close()
 

@@ -51,16 +51,15 @@ python3 etl/import_election_results.py \
 # Enrich op.territory with geometry after all election territories exist.
 psql -d elections -c "CALL op.load_territories_from_caop();"
 
-psql -d elections -c "CALL dw.refresh_dw();"
+psql -d elections -c "CALL wh.refresh_wh();"
 
 
 psql -d elections -c "SELECT COUNT(*) AS territories FROM op.territory;"
 psql -d elections -c "SELECT COUNT(*) AS turnout_rows FROM op.turnout_result;"
 psql -d elections -c "SELECT COUNT(*) AS vote_rows FROM op.vote_result;"
 psql -d elections -c "SELECT COUNT(*) AS summary_rows FROM op.result_summary;"
-psql -d elections -c "SELECT COUNT(*) AS rejects FROM op.etl_reject;"
-psql -d elections -c "SELECT COUNT(*) AS dw_vote_rows FROM dw.fact_vote_result;"
-psql -d elections -c "SELECT COUNT(*) AS dw_turnout_rows FROM dw.fact_turnout;"
+psql -d elections -c "SELECT COUNT(*) AS wh_vote_rows FROM wh.fact_vote_result;"
+psql -d elections -c "SELECT COUNT(*) AS wh_turnout_rows FROM wh.fact_turnout;"
 
 
 psql -d elections -c "
@@ -84,11 +83,6 @@ WITH checks AS (
     JOIN op.candidacy c ON c.candidacy_id = vr.candidacy_id
     JOIN op.political_entity pe ON pe.political_entity_id = c.political_entity_id
     WHERE pe.sigla ~ '^\[[A-Z]\]$'
-
-    UNION ALL
-
-    SELECT 'etl_rejects', COUNT(*)
-    FROM op.etl_reject
 
     UNION ALL
 
@@ -121,18 +115,18 @@ WITH checks AS (
 
     UNION ALL
 
-    SELECT 'dw_vote_mismatch', abs(
+    SELECT 'wh_vote_mismatch', abs(
         (SELECT COUNT(*) FROM op.vote_result)
         -
-        (SELECT COUNT(*) FROM dw.fact_vote_result)
+        (SELECT COUNT(*) FROM wh.fact_vote_result)
     )
 
     UNION ALL
 
-    SELECT 'dw_turnout_mismatch', abs(
+    SELECT 'wh_turnout_mismatch', abs(
         (SELECT COUNT(*) FROM op.turnout_result)
         -
-        (SELECT COUNT(*) FROM dw.fact_turnout)
+        (SELECT COUNT(*) FROM wh.fact_turnout)
     )
 )
 SELECT

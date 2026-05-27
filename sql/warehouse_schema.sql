@@ -1,13 +1,13 @@
-CREATE SCHEMA IF NOT EXISTS dw;
+CREATE SCHEMA IF NOT EXISTS wh;
 
-DROP TABLE IF EXISTS dw.fact_vote_result CASCADE;
-DROP TABLE IF EXISTS dw.fact_turnout CASCADE;
-DROP TABLE IF EXISTS dw.dim_political_entity CASCADE;
-DROP TABLE IF EXISTS dw.dim_territory CASCADE;
-DROP TABLE IF EXISTS dw.dim_office CASCADE;
-DROP TABLE IF EXISTS dw.dim_election CASCADE;
+DROP TABLE IF EXISTS wh.fact_vote_result CASCADE;
+DROP TABLE IF EXISTS wh.fact_turnout CASCADE;
+DROP TABLE IF EXISTS wh.dim_political_entity CASCADE;
+DROP TABLE IF EXISTS wh.dim_territory CASCADE;
+DROP TABLE IF EXISTS wh.dim_office CASCADE;
+DROP TABLE IF EXISTS wh.dim_election CASCADE;
 
-CREATE TABLE dw.dim_election AS
+CREATE TABLE wh.dim_election AS
 SELECT
     e.election_id AS election_key,
     e.code AS election_code,
@@ -18,9 +18,9 @@ SELECT
 FROM op.election e
 JOIN op.election_type et ON et.election_type_id = e.election_type_id;
 
-ALTER TABLE dw.dim_election ADD PRIMARY KEY (election_key);
+ALTER TABLE wh.dim_election ADD PRIMARY KEY (election_key);
 
-CREATE TABLE dw.dim_office AS
+CREATE TABLE wh.dim_office AS
 SELECT
     office_id AS office_key,
     code AS office_code,
@@ -28,9 +28,9 @@ SELECT
     scope_level
 FROM op.office;
 
-ALTER TABLE dw.dim_office ADD PRIMARY KEY (office_key);
+ALTER TABLE wh.dim_office ADD PRIMARY KEY (office_key);
 
-CREATE TABLE dw.dim_territory AS
+CREATE TABLE wh.dim_territory AS
 SELECT
     t.territory_id AS territory_key,
     t.code AS territory_code,
@@ -43,18 +43,18 @@ FROM op.territory t
 JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
 LEFT JOIN op.territory p ON p.territory_id = t.parent_id;
 
-ALTER TABLE dw.dim_territory ADD PRIMARY KEY (territory_key);
+ALTER TABLE wh.dim_territory ADD PRIMARY KEY (territory_key);
 
-CREATE INDEX IF NOT EXISTS dw_dim_territory_code_idx
-ON dw.dim_territory(territory_code);
+CREATE INDEX IF NOT EXISTS wh_dim_territory_code_idx
+ON wh.dim_territory(territory_code);
 
-CREATE INDEX IF NOT EXISTS dw_dim_territory_level_idx
-ON dw.dim_territory(territory_level);
+CREATE INDEX IF NOT EXISTS wh_dim_territory_level_idx
+ON wh.dim_territory(territory_level);
 
-CREATE INDEX IF NOT EXISTS dw_dim_territory_geom_gix
-ON dw.dim_territory USING gist(geom);
+CREATE INDEX IF NOT EXISTS wh_dim_territory_geom_gix
+ON wh.dim_territory USING gist(geom);
 
-CREATE TABLE dw.dim_political_entity AS
+CREATE TABLE wh.dim_political_entity AS
 SELECT
     political_entity_id AS political_entity_key,
     sigla,
@@ -62,9 +62,9 @@ SELECT
     entity_type
 FROM op.political_entity;
 
-ALTER TABLE dw.dim_political_entity ADD PRIMARY KEY (political_entity_key);
+ALTER TABLE wh.dim_political_entity ADD PRIMARY KEY (political_entity_key);
 
-CREATE TABLE dw.fact_turnout AS
+CREATE TABLE wh.fact_turnout AS
 SELECT
     tr.election_id AS election_key,
     tr.office_id AS office_key,
@@ -83,13 +83,13 @@ LEFT JOIN op.result_summary rs
  AND rs.office_id = tr.office_id
  AND rs.territory_id = tr.territory_id;
 
-ALTER TABLE dw.fact_turnout
+ALTER TABLE wh.fact_turnout
 ADD PRIMARY KEY (election_key, office_key, territory_key);
 
-CREATE INDEX IF NOT EXISTS dw_fact_turnout_territory_idx
-ON dw.fact_turnout(territory_key);
+CREATE INDEX IF NOT EXISTS wh_fact_turnout_territory_idx
+ON wh.fact_turnout(territory_key);
 
-CREATE TABLE dw.fact_vote_result AS
+CREATE TABLE wh.fact_vote_result AS
 SELECT
     vr.election_id AS election_key,
     vr.office_id AS office_key,
@@ -111,28 +111,28 @@ LEFT JOIN op.result_summary rs
  AND rs.office_id = vr.office_id
  AND rs.territory_id = vr.territory_id;
 
-ALTER TABLE dw.fact_vote_result
+ALTER TABLE wh.fact_vote_result
 ADD PRIMARY KEY (election_key, office_key, territory_key, political_entity_key);
 
-CREATE INDEX IF NOT EXISTS dw_fact_vote_result_territory_idx
-ON dw.fact_vote_result(territory_key);
+CREATE INDEX IF NOT EXISTS wh_fact_vote_result_territory_idx
+ON wh.fact_vote_result(territory_key);
 
-CREATE INDEX IF NOT EXISTS dw_fact_vote_result_entity_idx
-ON dw.fact_vote_result(political_entity_key);
+CREATE INDEX IF NOT EXISTS wh_fact_vote_result_entity_idx
+ON wh.fact_vote_result(political_entity_key);
 
-CREATE OR REPLACE PROCEDURE dw.refresh_dw()
+CREATE OR REPLACE PROCEDURE wh.refresh_wh()
 LANGUAGE plpgsql
 AS $$
 BEGIN
     TRUNCATE
-        dw.fact_vote_result,
-        dw.fact_turnout,
-        dw.dim_political_entity,
-        dw.dim_territory,
-        dw.dim_office,
-        dw.dim_election;
+        wh.fact_vote_result,
+        wh.fact_turnout,
+        wh.dim_political_entity,
+        wh.dim_territory,
+        wh.dim_office,
+        wh.dim_election;
 
-    INSERT INTO dw.dim_election
+    INSERT INTO wh.dim_election
     SELECT
         e.election_id,
         e.code,
@@ -143,7 +143,7 @@ BEGIN
     FROM op.election e
     JOIN op.election_type et ON et.election_type_id = e.election_type_id;
 
-    INSERT INTO dw.dim_office
+    INSERT INTO wh.dim_office
     SELECT
         office_id,
         code,
@@ -151,7 +151,7 @@ BEGIN
         scope_level
     FROM op.office;
 
-    INSERT INTO dw.dim_territory
+    INSERT INTO wh.dim_territory
     SELECT
         t.territory_id,
         t.code,
@@ -164,7 +164,7 @@ BEGIN
     JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
     LEFT JOIN op.territory p ON p.territory_id = t.parent_id;
 
-    INSERT INTO dw.dim_political_entity
+    INSERT INTO wh.dim_political_entity
     SELECT
         political_entity_id,
         sigla,
@@ -172,7 +172,7 @@ BEGIN
         entity_type
     FROM op.political_entity;
 
-    INSERT INTO dw.fact_turnout
+    INSERT INTO wh.fact_turnout
     SELECT
         tr.election_id,
         tr.office_id,
@@ -191,7 +191,7 @@ BEGIN
      AND rs.office_id = tr.office_id
      AND rs.territory_id = tr.territory_id;
 
-    INSERT INTO dw.fact_vote_result
+    INSERT INTO wh.fact_vote_result
     SELECT
         vr.election_id,
         vr.office_id,

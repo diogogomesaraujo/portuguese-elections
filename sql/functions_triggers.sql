@@ -9,8 +9,9 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS territory_normalize_name_before_write ON op.territory;
+DROP TRIGGER IF EXISTS territory_normalize_name ON op.territory;
 
-CREATE TRIGGER territory_normalize_name_before_write
+CREATE TRIGGER territory_normalize_name
 BEFORE INSERT OR UPDATE OF name ON op.territory
 FOR EACH ROW
 EXECUTE FUNCTION op.normalize_territory_name();
@@ -41,8 +42,9 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS turnout_validate_before_write ON op.turnout_result;
+DROP TRIGGER IF EXISTS turnout_result_validate ON op.turnout_result;
 
-CREATE TRIGGER turnout_validate_before_write
+CREATE TRIGGER turnout_result_validate
 BEFORE INSERT OR UPDATE ON op.turnout_result
 FOR EACH ROW
 EXECUTE FUNCTION op.validate_turnout_result();
@@ -82,8 +84,9 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS vote_validate_before_write ON op.vote_result;
+DROP TRIGGER IF EXISTS vote_result_validate ON op.vote_result;
 
-CREATE TRIGGER vote_validate_before_write
+CREATE TRIGGER vote_result_validate
 BEFORE INSERT OR UPDATE ON op.vote_result
 FOR EACH ROW
 EXECUTE FUNCTION op.validate_vote_result();
@@ -197,15 +200,17 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS turnout_refresh_summary_after_write ON op.turnout_result;
+DROP TRIGGER IF EXISTS turnout_result_refresh_summary ON op.turnout_result;
 
-CREATE TRIGGER turnout_refresh_summary_after_write
+CREATE TRIGGER turnout_result_refresh_summary
 AFTER INSERT OR UPDATE OR DELETE ON op.turnout_result
 FOR EACH ROW
 EXECUTE FUNCTION op.refresh_result_summary_after_change();
 
 DROP TRIGGER IF EXISTS vote_refresh_summary_after_write ON op.vote_result;
+DROP TRIGGER IF EXISTS vote_result_refresh_summary ON op.vote_result;
 
-CREATE TRIGGER vote_refresh_summary_after_write
+CREATE TRIGGER vote_result_refresh_summary
 AFTER INSERT OR UPDATE OR DELETE ON op.vote_result
 FOR EACH ROW
 EXECUTE FUNCTION op.refresh_result_summary_after_change();
