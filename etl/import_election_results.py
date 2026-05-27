@@ -12,8 +12,6 @@ from typing import Any, Iterable
 
 import psycopg2
 from openpyxl import load_workbook
-from psycopg2.extras import Json
-
 
 OFFICIAL_PARTY_HEADERS = {
     "A",
@@ -164,23 +162,6 @@ def safe_gce_sigla(sigla: str) -> str:
     return sigla
 
 
-def unresolved_placeholder_sigla(
-    kind: str,
-    placeholder_letter: str,
-    territory_code: str,
-    office_code: str,
-) -> str:
-    return f"UNRESOLVED-{kind}-{placeholder_letter}-{territory_code}-{office_code}"
-
-
-def unresolved_unlabeled_vote_sigla(
-    column_number: int,
-    territory_code: str,
-    office_code: str,
-) -> str:
-    return f"UNRESOLVED-COL-{column_number}-{territory_code}-{office_code}"
-
-
 def entity_type_for_sigla(sigla: str) -> str:
     if sigla in OFFICIAL_PARTY_HEADERS:
         return "party"
@@ -235,6 +216,10 @@ class AutarquicasMapaIParser:
             clean_text(c.value) for c in self.sheet[self.header_row - 1]
         ]
         self.headers = [clean_text(c.value) for c in self.sheet[self.header_row]]
+
+        self.last_coalition_labels_ordered: list[str] = []
+        self.last_gce_labels_ordered: list[str] = []
+
         # Some CNE 2021 files have row 4 as:
         # CÓD, CONC, FREG, A, B.E., ...
         # but data rows still are:
@@ -283,19 +268,9 @@ class AutarquicasMapaIParser:
             if has_code and has_conc and has_freg:
                 return row_no
 
-        debug_rows: list[str] = []
-
-        for row_no in range(1, 12):
-            row_values = [normalize_header_text(c.value) for c in self.sheet[row_no]]
-            non_empty = [v for v in row_values if v]
-
-            if non_empty:
-                debug_rows.append(f"row {row_no}: {non_empty}")
-
         raise RuntimeError(
             f"Could not detect header row in sheet {self.sheet_name}. "
-            "Expected a row containing code headers.\n"
-            + "\n".join(debug_rows)
+            "Expected a row containing code headers."
         )
 
     def result_columns(self) -> list[tuple[int, str]]:
@@ -320,7 +295,9 @@ class AutarquicasMapaIParser:
 
     def is_column_group(self, idx: int, wanted: str) -> bool:
         header = self.headers[idx] if idx < len(self.headers) else None
-        group_header = self.group_headers[idx] if idx < len(self.group_headers) else None
+        group_header = (
+            self.group_headers[idx] if idx < len(self.group_headers) else None
+        )
 
         header_norm = clean_text(header)
         group_norm = clean_text(group_header)
@@ -339,8 +316,7 @@ class AutarquicasMapaIParser:
         for idx, value in enumerate(values):
             header = self.headers[idx] if idx < len(self.headers) else None
             header_is_placeholder = (
-                header is not None
-                and re.fullmatch(r"\[[A-Z]\]", header) is not None
+                header is not None and re.fullmatch(r"\[[A-Z]\]", header) is not None
             )
 
             if self.is_column_group(idx, "coalition"):
@@ -364,8 +340,7 @@ class AutarquicasMapaIParser:
         for idx, value in enumerate(values):
             header = self.headers[idx] if idx < len(self.headers) else None
             header_is_placeholder = (
-                header is not None
-                and re.fullmatch(r"\[[A-Z]\]", header) is not None
+                header is not None and re.fullmatch(r"\[[A-Z]\]", header) is not None
             )
 
             if self.is_column_group(idx, "gce"):
@@ -419,8 +394,24 @@ class AutarquicasMapaIParser:
                 freguesia,
             )
 
-            coalition_labels_ordered = self.row_coalition_labels(values)
-            gce_labels_ordered = self.row_gce_labels(values)
+            row_coalition_labels = self.row_coalition_labels(values)
+            row_gce_labels = self.row_gce_labels(values)
+
+            if row_coalition_labels:
+                self.last_coalition_labels_ordered = row_coalition_labels
+
+            if row_gce_labels:
+                self.last_gce_labels_ordered = row_gce_labels
+
+            coalition_labels_ordered = (
+                row_coalition_labels
+                if row_coalition_labels
+                else self.last_coalition_labels_ordered
+            )
+
+            gce_labels_ordered = (
+                row_gce_labels if row_gce_labels else self.last_gce_labels_ordered
+            )
 
             votes: list[tuple[str, str, int, int]] = []
             coalition_votes_seen = 0
@@ -448,13 +439,12 @@ class AutarquicasMapaIParser:
                             sigla = coalition_labels_ordered[coalition_votes_seen]
                         else:
                             if vote_count == 0:
+                                coalition_votes_seen += 1
                                 continue
 
-                            sigla = unresolved_placeholder_sigla(
-                                "COL",
-                                placeholder_letter,
-                                territory_code,
-                                office_code,
+                            sigla = (
+                                f"SOURCE-COL-{placeholder_letter}-"
+                                f"{territory_code}-{office_code}"
                             )
 
                         coalition_votes_seen += 1
@@ -465,13 +455,12 @@ class AutarquicasMapaIParser:
                             sigla = gce_labels_ordered[gce_votes_seen]
                         else:
                             if vote_count == 0:
+                                gce_votes_seen += 1
                                 continue
 
-                            sigla = unresolved_placeholder_sigla(
-                                "GCE",
-                                placeholder_letter,
-                                territory_code,
-                                office_code,
+                            sigla = (
+                                f"SOURCE-GCE-{placeholder_letter}-"
+                                f"{territory_code}-{office_code}"
                             )
 
                         gce_votes_seen += 1
@@ -481,11 +470,9 @@ class AutarquicasMapaIParser:
                         if vote_count == 0:
                             continue
 
-                        sigla = unresolved_placeholder_sigla(
-                            "OTHER",
-                            placeholder_letter,
-                            territory_code,
-                            office_code,
+                        sigla = (
+                            f"SOURCE-OTHER-{placeholder_letter}-"
+                            f"{territory_code}-{office_code}"
                         )
                         entity_type = "other"
 
@@ -494,49 +481,6 @@ class AutarquicasMapaIParser:
                     entity_type = entity_type_for_sigla(sigla)
 
                 votes.append((sigla, entity_type, vote_count, display_order))
-
-            next_display_order = len(votes) + 1
-
-            for zero_based_idx, value in enumerate(values):
-                col_idx = zero_based_idx + 1
-
-                if col_idx <= self.FIXED_COLS:
-                    continue
-
-                if col_idx in used_vote_columns:
-                    continue
-
-                if self.is_column_group(zero_based_idx, "coalition"):
-                    continue
-
-                if self.is_column_group(zero_based_idx, "gce"):
-                    continue
-
-                header = (
-                    self.headers[zero_based_idx]
-                    if zero_based_idx < len(self.headers)
-                    else None
-                )
-
-                if header and "SIGLA" in header.upper():
-                    continue
-
-                vote_count = as_int(value)
-
-                if vote_count is None:
-                    continue
-
-                if vote_count == 0:
-                    continue
-
-                sigla = unresolved_unlabeled_vote_sigla(
-                    col_idx,
-                    territory_code,
-                    office_code,
-                )
-
-                votes.append((sigla, "other", vote_count, next_display_order))
-                next_display_order += 1
 
             raw = {
                 str(self.headers[i] or f"col_{i + 1}"): values[i]
@@ -727,7 +671,6 @@ def main() -> None:
     rows_seen = 0
     rows_loaded = 0
     vote_cells = 0
-    rejects = 0
 
     with conn, conn.cursor() as cur:
         election_id = get_one(
@@ -765,66 +708,38 @@ def main() -> None:
 
         for pr in parsed_rows:
             rows_seen += 1
-            cur.execute("SAVEPOINT row_import")
 
-            try:
+            cur.execute(
+                "SELECT op.save_turnout_result(%s,%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    args.election_code,
+                    pr.office_code,
+                    pr.territory_code,
+                    pr.registered_voters,
+                    pr.voters,
+                    pr.blank_votes,
+                    pr.null_votes,
+                    import_file_id,
+                ),
+            )
+
+            for sigla, entity_type, votes, display_order in pr.votes:
                 cur.execute(
-                    "SELECT op.save_turnout_result(%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "SELECT op.save_candidacy_vote_result(%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         args.election_code,
                         pr.office_code,
                         pr.territory_code,
-                        pr.registered_voters,
-                        pr.voters,
-                        pr.blank_votes,
-                        pr.null_votes,
+                        sigla,
+                        entity_type,
+                        votes,
+                        display_order,
                         import_file_id,
                     ),
                 )
+                vote_cells += 1
 
-                for sigla, entity_type, votes, display_order in pr.votes:
-                    cur.execute(
-                        "SELECT op.save_candidacy_vote_result(%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (
-                            args.election_code,
-                            pr.office_code,
-                            pr.territory_code,
-                            sigla,
-                            entity_type,
-                            votes,
-                            display_order,
-                            import_file_id,
-                        ),
-                    )
-                    vote_cells += 1
-
-                rows_loaded += 1
-
-            except Exception as exc:
-                cur.execute("ROLLBACK TO SAVEPOINT row_import")
-                cur.execute(
-                    """
-                    INSERT INTO op.etl_reject (
-                        election_id,
-                        import_file_id,
-                        row_no,
-                        reason,
-                        raw_row
-                    )
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (
-                        election_id,
-                        import_file_id,
-                        pr.row_no,
-                        str(exc),
-                        Json(pr.raw),
-                    ),
-                )
-                rejects += 1
-
-            finally:
-                cur.execute("RELEASE SAVEPOINT row_import")
+            rows_loaded += 1
 
         cur.execute("CALL dw.refresh_dw()")
 
@@ -840,7 +755,6 @@ def main() -> None:
                 "rows_seen": rows_seen,
                 "rows_loaded": rows_loaded,
                 "vote_cells_loaded": vote_cells,
-                "rejects": rejects,
             },
             ensure_ascii=False,
             indent=2,

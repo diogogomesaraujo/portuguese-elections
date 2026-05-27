@@ -16,6 +16,8 @@ DROP TABLE IF EXISTS public.cont_freguesias CASCADE;
 DROP TABLE IF EXISTS public.raa_cen_ori_freguesias CASCADE;
 DROP TABLE IF EXISTS public.raa_oci_freguesias CASCADE;
 DROP TABLE IF EXISTS public.ram_freguesias CASCADE;
+DROP TABLE IF EXISTS public.taxi_stands CASCADE;
+DROP TABLE IF EXISTS public.tracks_braga CASCADE;
 "
 psql -d elections -v ON_ERROR_STOP=1 -f data/spatial_class_tables.sql
 

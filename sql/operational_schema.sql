@@ -144,13 +144,3 @@ CREATE TABLE IF NOT EXISTS op.result_summary (
     updated_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (election_id, office_id, territory_id)
 );
-
-CREATE TABLE IF NOT EXISTS op.etl_reject (
-    reject_id bigserial PRIMARY KEY,
-    election_id bigint REFERENCES op.election(election_id),
-    import_file_id bigint REFERENCES op.import_file(import_file_id),
-    row_no int,
-    reason text NOT NULL,
-    raw_row jsonb,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
