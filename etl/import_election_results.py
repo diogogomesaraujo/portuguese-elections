@@ -119,20 +119,15 @@ def canonical_territory_code(
 ) -> str:
     code = raw_code.zfill(6)
 
-    # AF rows are parish-scope.
-    # Keep the exact source code, including election-only xxxx00 placeholders.
     if office_code == "AF":
         return code
 
-    # CM/AM rows are municipality-scope, even when old CNE files put
-    # footnote-like values such as (1), (2), (8) in the FREG column.
     if office_code in {"CM", "AM"}:
         if code.endswith("0000"):
             return code[:2]
 
         return code[:4]
 
-    # Fallback for future offices.
     if freguesia and not re.fullmatch(r"\(\d+\)", freguesia.strip()):
         return code
 
@@ -220,11 +215,6 @@ class Parser:
         self.last_coalition_labels_ordered: list[str] = []
         self.last_gce_labels_ordered: list[str] = []
 
-        # Some CNE 2021 files have row 4 as:
-        # CÓD, CONC, FREG, A, B.E., ...
-        # but data rows still are:
-        # CÓD, CONC, FREG, ÓRG, inscritos, votantes, brancos, nulos, party...
-        # Force the first 8 headers to the operational schema.
         if len(self.headers) >= 8:
             first_three = [normalize_header_text(v) for v in self.headers[:3]]
 
@@ -258,13 +248,9 @@ class Parser:
             has_registered = any(v in {"INSC", "INSCRITOS"} for v in row_values)
             has_voters = any(v in {"VOT", "VOTANTES"} for v in row_values)
 
-            # 2017/2025 standard: full fixed-column header row.
             if has_code and has_office and has_registered and has_voters:
                 return row_no
 
-            # 2021 original: row 4 only has CÓD/CONC/FREG, while row 3 has
-            # ÓRG/INSC/VOT as group headers. Data rows still follow the same
-            # fixed column order.
             if has_code and has_conc and has_freg:
                 return row_no
 
@@ -537,10 +523,6 @@ def build_territory_rows(
             ),
         )
 
-        # District/header placeholder rows such as 030000 must not create
-        # fake municipalities like 0300.
-        # But old CNE files may contain AF rows with xx0000 as real
-        # election-source placeholder parish rows.
         if raw.endswith("0000"):
             if pr.office_code == "AF" and pr.freguesia:
                 territories[parish_code] = (
@@ -552,12 +534,7 @@ def build_territory_rows(
 
             continue
 
-        # Invalid municipality code xx00.
-        # Do not create fake municipality 0300/0400/etc.
         if municipality_code.endswith("00"):
-            # But if the row is AF and has a freguesia label, keep the exact
-            # source code as an election-only parish placeholder. It will not
-            # receive CAOP geometry, but the official election row can load.
             if pr.office_code == "AF" and pr.freguesia:
                 territories[parish_code] = (
                     parish_code,
@@ -575,9 +552,6 @@ def build_territory_rows(
             district_code,
         )
 
-        # For AF rows, keep the exact source parish code, including xxxx00
-        # placeholders. They are valid election-source rows, even if CAOP
-        # cannot match them spatially.
         if pr.office_code == "AF" and pr.freguesia:
             territories[parish_code] = (
                 parish_code,
@@ -740,6 +714,7 @@ def main() -> None:
                 vote_cells += 1
 
             rows_loaded += 1
+
         cur.execute("CALL op.populate_seat_count();")
         cur.execute("CALL op.calculate_seat_results()")
         cur.execute("CALL wh.refresh_wh()")

@@ -49,7 +49,7 @@ python3 etl/import_election_results.py \
 
 
 # Enrich op.territory with geometry after all election territories exist.
-psql -d elections -c "CALL op.load_territories_from_caop();"
+psql -d elections -c "CALL op.load_territories_from_spatial_data();"
 
 # Calculate seats with D'Hondt where op.seat_count exists.
 psql -d elections -c "CALL op.calculate_seat_results();"

@@ -1,10 +1,10 @@
-DROP PROCEDURE IF EXISTS op.load_territories_from_caop();
+DROP PROCEDURE IF EXISTS op.load_territories_from_spatial_data();
 
-CREATE PROCEDURE op.load_territories_from_caop()
+CREATE PROCEDURE op.load_territories_from_spatial_data()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    CREATE TEMP TABLE tmp_caop_parish (
+    CREATE TEMP TABLE tmp_spatial_parish (
         dtmnfr text,
         freguesia text,
         municipio text,
@@ -15,7 +15,7 @@ BEGIN
     ) ON COMMIT DROP;
 
     IF to_regclass('public.cont_freguesias') IS NOT NULL THEN
-        INSERT INTO tmp_caop_parish
+        INSERT INTO tmp_spatial_parish
         SELECT
             lpad(c.dtmnfr::text, 6, '0'),
             c.freguesia,
@@ -35,7 +35,7 @@ BEGIN
     END IF;
 
     IF to_regclass('public.raa_cen_ori_freguesias') IS NOT NULL THEN
-        INSERT INTO tmp_caop_parish
+        INSERT INTO tmp_spatial_parish
         SELECT
             lpad(c.dtmnfr::text, 6, '0'),
             c.freguesia,
@@ -55,7 +55,7 @@ BEGIN
     END IF;
 
     IF to_regclass('public.raa_oci_freguesias') IS NOT NULL THEN
-        INSERT INTO tmp_caop_parish
+        INSERT INTO tmp_spatial_parish
         SELECT
             lpad(c.dtmnfr::text, 6, '0'),
             c.freguesia,
@@ -75,7 +75,7 @@ BEGIN
     END IF;
 
     IF to_regclass('public.ram_freguesias') IS NOT NULL THEN
-        INSERT INTO tmp_caop_parish
+        INSERT INTO tmp_spatial_parish
         SELECT
             lpad(c.dtmnfr::text, 6, '0'),
             c.freguesia,
@@ -94,9 +94,6 @@ BEGIN
           AND c.geom IS NOT NULL;
     END IF;
 
-    RAISE NOTICE 'Loaded % CAOP parish geometry rows into temp table',
-        (SELECT COUNT(*) FROM tmp_caop_parish);
-
     INSERT INTO op.territory (
         level_id,
         code,
@@ -112,9 +109,9 @@ BEGIN
         'Portugal',
         NULL,
         ST_Multi(ST_UnaryUnion(ST_Collect(p.geom)))::geometry(MultiPolygon, 4326),
-        'CAOP aggregated',
+        'spatial boundaries aggregated',
         4326
-    FROM tmp_caop_parish p
+    FROM tmp_spatial_parish p
     JOIN op.territory_level tl ON tl.code = 'country'
     GROUP BY tl.territory_level_id
     ON CONFLICT (code) DO UPDATE SET
@@ -140,9 +137,9 @@ BEGIN
         COALESCE(max(p.distrito_ilha), 'Distrito ' || left(p.dtmnfr, 2)),
         max(country.territory_id),
         ST_Multi(ST_UnaryUnion(ST_Collect(p.geom)))::geometry(MultiPolygon, 4326),
-        'CAOP aggregated',
+        'spatial boundaries aggregated',
         4326
-    FROM tmp_caop_parish p
+    FROM tmp_spatial_parish p
     JOIN op.territory_level tl ON tl.code = 'district'
     JOIN op.territory country ON country.code = 'PT'
     GROUP BY tl.territory_level_id, left(p.dtmnfr, 2)
@@ -169,9 +166,9 @@ BEGIN
         COALESCE(max(p.municipio), left(p.dtmnfr, 4)),
         max(d.territory_id),
         ST_Multi(ST_UnaryUnion(ST_Collect(p.geom)))::geometry(MultiPolygon, 4326),
-        'CAOP aggregated',
+        'spatial boundaries aggregated',
         4326
-    FROM tmp_caop_parish p
+    FROM tmp_spatial_parish p
     JOIN op.territory_level tl ON tl.code = 'municipality'
     JOIN op.territory d ON d.code = left(p.dtmnfr, 2)
     GROUP BY tl.territory_level_id, left(p.dtmnfr, 4)
@@ -200,7 +197,7 @@ BEGIN
         ST_Multi(ST_UnaryUnion(ST_Collect(p.geom)))::geometry(MultiPolygon, 4326),
         max(p.source_table),
         max(p.source_srid)
-    FROM tmp_caop_parish p
+    FROM tmp_spatial_parish p
     JOIN op.territory_level tl ON tl.code = 'parish'
     JOIN op.territory m ON m.code = left(p.dtmnfr, 4)
     GROUP BY tl.territory_level_id, p.dtmnfr
@@ -211,7 +208,5 @@ BEGIN
         source_table = EXCLUDED.source_table,
         source_srid = EXCLUDED.source_srid,
         updated_at = now();
-
-    RAISE NOTICE 'CAOP geometry enrichment complete';
 END;
 $$;
