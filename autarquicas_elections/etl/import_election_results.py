@@ -13,7 +13,7 @@ from typing import Any, Iterable
 import psycopg2
 from openpyxl import load_workbook
 
-OFFICIAL_PARTY_HEADERS = {
+PARTY_HEADERS = {
     "A",
     "ADN",
     "B.E.",
@@ -151,14 +151,14 @@ def looks_like_coalition_sigla(sigla: str) -> bool:
 
 
 def safe_gce_sigla(sigla: str) -> str:
-    if sigla in OFFICIAL_PARTY_HEADERS:
+    if sigla in PARTY_HEADERS:
         return f"GCE-{sigla}"
 
     return sigla
 
 
 def entity_type_for_sigla(sigla: str) -> str:
-    if sigla in OFFICIAL_PARTY_HEADERS:
+    if sigla in PARTY_HEADERS:
         return "party"
 
     if sigla.startswith("GCE-") or sigla.startswith("MOV") or sigla.startswith("M.A"):

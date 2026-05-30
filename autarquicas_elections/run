@@ -377,3 +377,5 @@ SELECT
 FROM checks
 ORDER BY check_name;
 "
+
+psql -d elections -v ON_ERROR_STOP=1 -f sql/cleanup_spatial_leftovers.sql
