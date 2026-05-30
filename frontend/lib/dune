@@ -1,6 +1,6 @@
 (library
  (name frontend)
- (libraries bonsai js_of_ocaml virtual_dom bonsai.web bonsai.web_ui_partial_render_table core_kernel virtual_dom.svg yojson ppx_css)
+ (libraries bonsai js_of_ocaml virtual_dom bonsai.web bonsai.web_ui_form bonsai.web_ui_partial_render_table core_kernel virtual_dom.svg yojson ppx_css)
  (preprocess
-   (pps js_of_ocaml-ppx bonsai.ppx_bonsai ppx_sexp_conv ppx_jane ppx_css ppx_yojson_conv))
+   (pps js_of_ocaml-ppx bonsai.ppx_bonsai ppx_sexp_conv ppx_jane ppx_css ppx_yojson_conv ppx_typed_fields))
 )
