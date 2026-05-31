@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="c6bcc8d8-bb29-46cd-9bdd-cc0df77b3c9d" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/database/spatial_functions/country.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/spatial_functions/country.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/spatial_functions/district_municipalities.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/spatial_functions/district_municipalities.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/spatial_functions/municipality_parishes.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/spatial_functions/municipality_parishes.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/spatial_functions/parish.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/spatial_functions/parish.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/svg.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/svg.sql" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "git-widget-placeholder": "merging"
+  },
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "postgresql"
+    ],
+    "com.intellij.ide.scratch.ScratchImplUtil$2/New Scratch File": [
+      "PostgreSQL"
+    ]
+  }
+}]]></component>
+  <component name="TaskManager">
+    <servers />
+  </component>
+</project>

@@ -17,7 +17,14 @@ BEGIN
             territory_name,
             parent_name AS municipality_name,
             ST_SimplifyPreserveTopology(
-                ST_CollectionExtract(geom, 3),
+                ST_CollectionExtract(
+                    ST_Scale(
+                        ST_Transform(geom, 4326),
+                        10000,
+                        10000
+                    ),
+                    3
+                ),
                 precision_value
             ) AS geom
         FROM wh.dim_territory
@@ -28,13 +35,13 @@ BEGIN
     SELECT svgdoc(
         content => array_agg(
             svgshape(
-                geom,
+                ST_CollectionExtract(geom, 3),
                 title => territory_name || ' / ' || municipality_name,
                 style => svgstyleprop(
-                    stroke => stroke,
-                    strokewidth => strokewidth,
-                    fill => fill,
-                    fillopacity => fillopacity
+                    stroke => stroke::text,
+                    strokewidth => strokewidth::text,
+                    fill => fill::text,
+                    fillopacity => fillopacity::text
                 )
             )
             ORDER BY territory_code
@@ -42,10 +49,12 @@ BEGIN
         viewbox => svgviewbox(ST_Collect(geom))
     )
     INTO svg
-    FROM parish_geom;
+    FROM parish_geom
+    WHERE geom IS NOT NULL
+      AND NOT ST_IsEmpty(geom);
 
     RETURN svg;
 END;
 $$
 LANGUAGE plpgsql
-IMMUTABLE;
+STABLE;
