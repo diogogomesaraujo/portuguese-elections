@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourcePerFileMappings">
-    <file url="file://$PROJECT_DIR$/database/spatial_functions/country.sql" value="f58d6f02-f341-46a3-955b-4d6a28db2b1c" />
-    <file url="file://$PROJECT_DIR$/database/spatial_functions/district_municipalities.sql" value="f58d6f02-f341-46a3-955b-4d6a28db2b1c" />
-    <file url="file://$PROJECT_DIR$/database/spatial_functions/municipality_parishes.sql" value="f58d6f02-f341-46a3-955b-4d6a28db2b1c" />
-    <file url="file://$PROJECT_DIR$/database/spatial_functions/parish.sql" value="f58d6f02-f341-46a3-955b-4d6a28db2b1c" />
-    <file url="file://$PROJECT_DIR$/database/svg.sql" value="f58d6f02-f341-46a3-955b-4d6a28db2b1c" />
     <file url="file://$APPLICATION_CONFIG_DIR$/scratches/scratch.sql" value="f58d6f02-f341-46a3-955b-4d6a28db2b1c" />
   </component>
 </project>

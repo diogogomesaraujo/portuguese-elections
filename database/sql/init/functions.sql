@@ -10,3 +10,4 @@
 \ir ../functions/spatial/district_municipalities.sql
 \ir ../functions/spatial/municipality_parishes.sql
 \ir ../functions/spatial/parish.sql
+\ir ../functions/svg.sql
