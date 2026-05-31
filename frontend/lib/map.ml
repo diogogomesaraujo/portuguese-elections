@@ -250,7 +250,8 @@ end
       in
 
       let%bind.Effect election_years =
-        FieldOptions.all_int ~uri: (uri ^ "/election/years/_")
+        FieldOptions.all_int ~uri: (uri ^ "/election/years/"
+                            ^ String.lowercase form_state.election_type)
       in
 
       let%bind.Effect election_types =
@@ -258,8 +259,8 @@ end
       in
 
       let%bind.Effect offices =
-        FieldOptions.all ~uri: (uri ^ "/election/office/"
-                            ^ form_state.election_type)
+        FieldOptions.all ~uri: (uri ^ "/election/offices/"
+                            ^ String.lowercase form_state.election_type)
       in
 
       set_field_options
@@ -281,8 +282,8 @@ end
     in
 
     let%sub () = Bonsai.Edge.on_change
-      (module MapType)
-      map_type
+      (module Selected)
+      (let%map form = form in F.value form |> Or_error.ok_exn)
       ~callback:
         (let%map effect = fetch_field_options in
           fun _ -> effect)

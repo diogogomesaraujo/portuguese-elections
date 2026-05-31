@@ -1,7 +1,7 @@
 open Caqti_request.Infix
 
 module Elections = struct
-  let election_types =
+  let election_types _ =
     let query =
       "
       SELECT DISTINCT election_type
@@ -17,7 +17,7 @@ module Elections = struct
         "
         SELECT DISTINCT election_year
         FROM wh.dim_election
-        WHERE election_type = '%s'
+        WHERE LOWER(election_type) = '%s'
         ORDER BY election_year DESC;
         "
         election_type
@@ -35,7 +35,7 @@ module Elections = struct
           ON e.election_key = ft.election_key
         JOIN wh.dim_office o
           ON o.office_key = ft.office_key
-        WHERE e.election_type = '%s'
+        WHERE LOWER(e.election_type) = '%s'
         ORDER BY o.office_name;
         "
         election_type

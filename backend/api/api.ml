@@ -1,3 +1,4 @@
+open Backend.Elections
 open Backend.Regions
 open Backend.Table
 open Backend.Map
@@ -33,6 +34,21 @@ module Api = struct
         |> Dream.response ~headers
         |> Lwt.return
 
+    let list_int = function
+      | Ok res ->
+        let l =
+          List.map
+            (fun e -> `Int e)
+            res
+        in
+        `List l
+        |> Yojson.to_string
+        |> Dream.response ~headers
+        |> Lwt.return
+      | Error e -> Yojson.to_string (`List [])
+        |> Dream.response ~headers
+        |> Lwt.return
+
     let list_t4 ~header = function
       | Ok res ->
         let (l1, l2, l3, l4) =
@@ -57,33 +73,59 @@ module Api = struct
         |> Lwt.return
   end
 
-  module Regions = struct
-    let req ~name ~arg ~regions =
-      Dream.get (Printf.sprintf "/%s/:%s" name arg)
-        (fun req -> Dream.sql req (fun conn ->
-          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
-          let param = Dream.param req arg in
-          let%lwt result = Conn.collect_list (regions param) () in
-          Response.list result)
-        )
+  let req ~name ~arg ~regions ~list =
+    Dream.get (Printf.sprintf "/%s/:%s" name arg)
+      (fun req -> Dream.sql req (fun conn ->
+        let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+        let param = Dream.param req arg in
+        let%lwt result = Conn.collect_list (regions param) () in
+        list result)
+      )
 
+  module Regions = struct
     let districts =
       req
         ~name: "districts"
         ~arg:  "arg"
         ~regions: Regions.districts
+        ~list: Response.list
 
     let municipalities =
       req
         ~name: "municipalities"
         ~arg:  "district"
         ~regions: Regions.municipalities
+        ~list: Response.list
 
     let parishes =
       req
         ~name: "parishes"
         ~arg:  "municipality"
         ~regions: Regions.parishes
+        ~list: Response.list
+  end
+
+  module Elections = struct
+    let types =
+      req
+        ~name: "types"
+        ~arg:  "arg"
+        ~regions: Elections.election_types
+        ~list: Response.list
+
+    let years =
+      req
+        ~name: "years"
+        ~arg:  "arg"
+        ~regions: Elections.election_years
+        ~list: Response.list_int
+
+    let office =
+      req
+        ~name: "offices"
+        ~arg:  "election_type"
+        ~regions: Elections.offices
+        ~list: Response.list
   end
 
   module Map = struct
@@ -101,25 +143,25 @@ module Api = struct
       req
         ~name: "country"
         ~map: Map.country_districts
-        ~precision: 5
+        ~precision: 50
 
     let district_municipalities =
       req
         ~name: "district"
         ~map: Map.district_municipalities
-        ~precision: 5
+        ~precision: 1
 
     let municipality_parishes =
       req
         ~name: "municipality"
         ~map: Map.municipality_parishes
-        ~precision: 5
+        ~precision: 1
 
     let parish =
       req
         ~name: "parish"
         ~map: Map.parish
-        ~precision: 5
+        ~precision: 1
   end
 
   module Table = struct
@@ -147,6 +189,11 @@ module Api = struct
         Regions.districts;
         Regions.municipalities;
         Regions.parishes;
+      ];
+      Dream.scope "/election" [Dream.memory_sessions] [
+        Elections.office;
+        Elections.types;
+        Elections.years;
       ];
       Dream.scope "/map" [Dream.memory_sessions] [
         Map.country_districts;
