@@ -21,14 +21,7 @@ BEGIN
             c.freguesia,
             c.municipio,
             c.distrito_ilha,
-            ST_Multi(
-                ST_CollectionExtract(
-                    ST_MakeValid(ST_Transform(c.geom, 4326)),
-                    3
-                )
-            )::geometry(MultiPolygon, 4326),
-            'cont_freguesias',
-            ST_SRID(c.geom)
+            ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Transform(c.geom, 4326)), 3))::geometry(MultiPolygon, 4326), 'cont_freguesias', ST_SRID(c.geom)
         FROM public.cont_freguesias c
         WHERE c.dtmnfr IS NOT NULL
           AND c.geom IS NOT NULL;
@@ -41,12 +34,7 @@ BEGIN
             c.freguesia,
             c.municipio,
             c.distrito_ilha,
-            ST_Multi(
-                ST_CollectionExtract(
-                    ST_MakeValid(ST_Transform(c.geom, 4326)),
-                    3
-                )
-            )::geometry(MultiPolygon, 4326),
+            ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Transform(c.geom, 4326)), 3))::geometry(MultiPolygon, 4326),
             'raa_cen_ori_freguesias',
             ST_SRID(c.geom)
         FROM public.raa_cen_ori_freguesias c
@@ -61,12 +49,7 @@ BEGIN
             c.freguesia,
             c.municipio,
             c.distrito_ilha,
-            ST_Multi(
-                ST_CollectionExtract(
-                    ST_MakeValid(ST_Transform(c.geom, 4326)),
-                    3
-                )
-            )::geometry(MultiPolygon, 4326),
+            ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Transform(c.geom, 4326)), 3))::geometry(MultiPolygon, 4326),
             'raa_oci_freguesias',
             ST_SRID(c.geom)
         FROM public.raa_oci_freguesias c
@@ -81,12 +64,7 @@ BEGIN
             c.freguesia,
             c.municipio,
             c.distrito_ilha,
-            ST_Multi(
-                ST_CollectionExtract(
-                    ST_MakeValid(ST_Transform(c.geom, 4326)),
-                    3
-                )
-            )::geometry(MultiPolygon, 4326),
+            ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Transform(c.geom, 4326)), 3))::geometry(MultiPolygon, 4326),
             'ram_freguesias',
             ST_SRID(c.geom)
         FROM public.ram_freguesias c

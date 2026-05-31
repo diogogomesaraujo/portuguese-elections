@@ -16,7 +16,7 @@ module Map = struct
       Printf.sprintf
         "SELECT * FROM country(
           '#000000',
-          '1000',
+          '100',
           'blue',
           '0.5',
           %d)"
