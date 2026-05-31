@@ -1,35 +1,50 @@
-CREATE OR REPLACE FUNCTION municipality_parishes(  municipality text,
-                                                   stroke   text,
-                                                   strokewidth text,
-                                                   fill text,
-                                                   fillopacity text,
-                                                   precision_value integer)
+CREATE OR REPLACE FUNCTION municipality_parishes(
+    municipality_name text,
+    stroke text,
+    strokewidth text,
+    fill text,
+    fillopacity text,
+    precision_value integer
+)
 RETURNS text AS
 $$
 DECLARE
-svg text;
+    svg text;
 BEGIN
-svg := (WITH municipalities_geom AS (
-    SELECT
-        freguesia,
-        st_scale(st_transform(st_union(geom), 4326), 10000, 10000)
-        AS geom
-    FROM cont_freguesias
-    WHERE municipio = municipality
-    GROUP BY freguesia
-)
-SELECT svgdoc(
-               content=> array_agg(svgshape(geom,
-                                            title => freguesia,
-                                            style => svgstyleprop(
-                                                    stroke => stroke,
-                                                    strokewidth => strokewidth,
-                                                    fill => fill,
-                                                    fillopacity =>  fillopacity))),
-               viewbox => svgviewbox(st_collect(geom))
-       )
-FROM municipalities_geom);
-RETURN svg;
+    WITH parishes_geom AS (
+        SELECT
+            territory_code,
+            territory_name,
+            ST_SimplifyPreserveTopology(
+                ST_CollectionExtract(geom, 3),
+                precision_value
+            ) AS geom
+        FROM wh.dim_territory
+        WHERE territory_level = 'parish'
+          AND parent_name = municipality_name
+          AND geom IS NOT NULL
+    )
+    SELECT svgdoc(
+        content => array_agg(
+            svgshape(
+                geom,
+                title => territory_name,
+                style => svgstyleprop(
+                    stroke => stroke,
+                    strokewidth => strokewidth,
+                    fill => fill,
+                    fillopacity => fillopacity
+                )
+            )
+            ORDER BY territory_code
+        ),
+        viewbox => svgviewbox(ST_Collect(geom))
+    )
+    INTO svg
+    FROM parishes_geom;
+
+    RETURN svg;
 END;
 $$
-LANGUAGE 'plpgsql' IMMUTABLE;
+LANGUAGE plpgsql
+IMMUTABLE;
