@@ -100,7 +100,7 @@ module Map = struct
       | Parish p       -> uri ^ "/map/parish/" ^ p
   end
 
-  let get_map ~uri ?arguments () =
+  let get ~uri ?arguments () =
     Api.get ?arguments ~uri ()
 
   let map ~uri ?arguments  () =
@@ -113,7 +113,7 @@ module Map = struct
       and uri = uri in
       let%bind.Effect res =
         Bonsai_web.Effect.of_deferred_fun
-          (fun uri -> get_map ~uri ?arguments ()) uri
+          (fun uri -> get ~uri ?arguments ()) uri
       in
 
       match res with

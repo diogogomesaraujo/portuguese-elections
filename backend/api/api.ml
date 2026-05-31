@@ -33,7 +33,7 @@ module Api = struct
         |> Dream.response ~headers
         |> Lwt.return
 
-    let list_t4 = function
+    let list_t4 ~header = function
       | Ok res ->
         let (l1, l2, l3, l4) =
           List.fold_left
@@ -45,7 +45,10 @@ module Api = struct
             ([], [], [], [])
             res
         in
-        `List [`List l1; `List l2; `List l3; `List l4]
+        let header = List.map (
+          fun h -> `String h
+        ) header in
+        `List [`List header; `List l1; `List l2; `List l3; `List l4]
         |> Yojson.to_string
         |> Dream.response ~headers
         |> Lwt.return
@@ -126,7 +129,7 @@ module Api = struct
         (fun req -> Dream.sql req (fun conn ->
           let module Conn = (val conn : Caqti_lwt.CONNECTION) in
           let%lwt res = Conn.collect_list data () in
-          Response.list_t4 res)
+          Response.list_t4 ~header res)
         )
 
     let generic =
