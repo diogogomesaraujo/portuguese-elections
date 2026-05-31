@@ -34,21 +34,6 @@ module Api = struct
         |> Dream.response ~headers
         |> Lwt.return
 
-    let list_int = function
-      | Ok res ->
-        let l =
-          List.map
-            (fun e -> `Int e)
-            res
-        in
-        `List l
-        |> Yojson.to_string
-        |> Dream.response ~headers
-        |> Lwt.return
-      | Error e -> Yojson.to_string (`List [])
-        |> Dream.response ~headers
-        |> Lwt.return
-
     let list_t4 ~header = function
       | Ok res ->
         let (l1, l2, l3, l4) =
@@ -118,7 +103,7 @@ module Api = struct
         ~name: "years"
         ~arg:  "arg"
         ~regions: Elections.election_years
-        ~list: Response.list_int
+        ~list: Response.list
 
     let office =
       req

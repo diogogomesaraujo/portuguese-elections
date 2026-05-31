@@ -22,7 +22,7 @@ module Elections = struct
         "
         election_type
     in
-    Caqti_type.(unit ->* int) query
+    Caqti_type.(unit ->* string) query
 
   let offices election_type =
     let query =
