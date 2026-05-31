@@ -30,7 +30,7 @@ module Map = struct
           (fun uri -> Api.get ~uri ()) uri
       in
 
-      (match res with
+      [not_selected] @ (match res with
       | Ok res ->
         (match Yojson.Safe.from_string res with
         | `List regions ->
@@ -42,7 +42,7 @@ module Map = struct
               | _ -> None)
         | _ -> []
         )
-      | _ -> []) @ [not_selected] |> Effect.return
+      | _ -> []) |> Effect.return
   end
 
   module Selected = struct
@@ -161,6 +161,20 @@ module Map = struct
       Selected.form ~regions: regions_state
     in
 
+    let%sub map_type =
+      let%arr form = form
+      in
+
+      match F.value form with
+      | Ok f when not (String.equal f.parish not_selected) ->
+        MapType.Parish f.parish
+      | Ok f when not (String.equal f.municipality not_selected) ->
+        MapType.Municipality f.municipality
+      | Ok f when not (String.equal f.district not_selected) ->
+        MapType.District f.district
+      | _ -> MapType.Country
+    in
+
     let%sub fetch_regions =
       let%arr form = form
         and set_regions = set_regions
@@ -192,21 +206,6 @@ module Map = struct
         ; parishes }
     in
 
-    let%sub map_type =
-      let%arr form = form
-        and fetch_regions = fetch_regions
-      in
-
-      match F.value form with
-      | Ok f when not (String.equal f.parish not_selected) ->
-        MapType.Parish f.parish
-      | Ok f when not (String.equal f.municipality not_selected) ->
-        MapType.Municipality f.municipality
-      | Ok f when not (String.equal f.district not_selected) ->
-        MapType.District f.district
-      | _ -> MapType.Country
-    in
-
     let uri =
       let%map map_state = map_state in
       MapType.uri_of ~uri map_state
@@ -217,7 +216,8 @@ module Map = struct
     in
 
     let%sub () = Bonsai.Edge.on_change
-      (module String) uri
+      (module MapType)
+      map_type
       ~callback:
         (let%map effect = fetch_regions in
           fun _ -> effect)
@@ -233,7 +233,8 @@ module Map = struct
       ; Vdom.Node.sexp_for_debugging
         ([%sexp_of: Selected.t Or_error.t] (F.value form))
       ;  Vdom.Node.button
-        ~attrs: [Vdom.Attr.on_click (fun _ -> set_map map_type)]
+        ~attrs: [Vdom.Attr.on_click (fun _ ->
+                                      set_map map_type)]
           [ Vdom.Node.text "Update" ]
       ; map
       ]

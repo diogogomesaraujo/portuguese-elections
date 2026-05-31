@@ -12,7 +12,7 @@ type row =
   ; age : int
   }
 
-let basic_table rows =
+let make rows =
   let open Vdom.Node in
   let thead = thead [ td [ text "id" ]; td [ text "name" ]; td [ text "age" ] ] in
   let tbody =
@@ -25,7 +25,7 @@ let basic_table rows =
 ;;
 
 let table =
-  basic_table
+  make
     [ { id = 0; name = "George Washington"; age = 67 }
     ; { id = 1; name = "Alexander Hamilton"; age = 47 }
     ; { id = 2; name = "Abraham Lincoln"; age = 56 }
