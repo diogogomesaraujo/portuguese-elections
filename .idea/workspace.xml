@@ -2,7 +2,18 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="c6bcc8d8-bb29-46cd-9bdd-cc0df77b3c9d" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/data_sources_history.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/data_sources_history.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/f58d6f02-f341-46a3-955b-4d6a28db2b1c.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/f58d6f02-f341-46a3-955b-4d6a28db2b1c.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/data_source_mapping.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/data_source_mapping.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/api/api.ml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/api/api.ml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/lib/elections.ml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/lib/elections.ml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/lib/map.ml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/lib/map.ml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/data/converted/01-mapa_I_vf_r2.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/database/data/converted/01-mapa_I_vf_r2.xlsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/parish.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/parish.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/lib/map.ml" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/lib/map.ml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -16,19 +27,22 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "git-widget-placeholder": "main"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;DatabaseDriversLRU&quot;: [
-      &quot;postgresql&quot;
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "postgresql"
     ],
-    &quot;com.intellij.ide.scratch.ScratchImplUtil$2/New Scratch File&quot;: [
-      &quot;PostgreSQL&quot;
+    "com.intellij.ide.scratch.LRUPopupBuilder$1/": [
+      "PostgreSQL"
+    ],
+    "com.intellij.ide.scratch.ScratchImplUtil$2/New Scratch File": [
+      "PostgreSQL"
     ]
   }
-}</component>
+}]]></component>
   <component name="TaskManager">
     <servers />
   </component>
