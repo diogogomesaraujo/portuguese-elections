@@ -2,3 +2,4 @@
 spatial_class_tables.sql
 venv/
 database/data/converted/01-mapa_I_vf_r2.xlsx
+.idea/

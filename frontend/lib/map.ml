@@ -75,9 +75,9 @@ end
 
   module Selected = struct
     type t =
-      { office:          string
-      ; election_type:   string
+      { election_type:   string
       ; election_year:   int
+      ; office:          string
       ; district:        string
       ; municipality:    string
       ; parish:          string
@@ -139,14 +139,22 @@ end
      | Country
      | District of string
      | Municipality of string
-     | Parish of string
+     | Parish of string * string * int * string
      [@@deriving sexp, equal]
 
     let uri_of ~uri = function
       | Country        -> uri ^ "/map/country/_"
       | District d     -> uri ^ "/map/district/" ^ d
       | Municipality m -> uri ^ "/map/municipality/" ^ m
-      | Parish p       -> uri ^ "/map/parish/" ^ p
+      | Parish (p, election_type, election_year, office) ->
+        Printf.sprintf
+          "%s/map/parish/%s?type=%s&year=%d&office=%s"
+          uri
+          p
+          election_type
+          election_year
+          office
+
   end
 
   let get ~uri ?arguments () =
@@ -216,7 +224,11 @@ end
 
       match F.value form with
       | Ok f when not (String.equal f.parish not_selected) ->
-        MapType.Parish f.parish
+        MapType.Parish
+          ( f.parish
+          , f.election_type
+          , f.election_year
+          , f.office )
       | Ok f when not (String.equal f.municipality not_selected) ->
         MapType.Municipality f.municipality
       | Ok f when not (String.equal f.district not_selected) ->

@@ -1,7 +1,6 @@
 open Backend.Elections
 open Backend.Regions
 open Backend.Table
-open Backend.Map
 open Lwt.Syntax
 open Lwt.Infix
 
@@ -73,50 +72,57 @@ module Api = struct
         |> Lwt.return
   end
 
-  let req ~name ~arg ~regions ~list =
-    Dream.get (Printf.sprintf "/%s/:%s" name arg)
-      (fun req -> Dream.sql req (fun conn ->
-        let module Conn = (val conn : Caqti_lwt.CONNECTION) in
-        let param = Dream.param req arg in
-        let%lwt result = Conn.collect_list (regions param) () in
-        list result)
-      )
-
   module Regions = struct
+    let req ~name ~arg ~regions =
+      Dream.get (Printf.sprintf "/%s/:%s" name arg)
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+          let param = Dream.param req arg in
+          let%lwt result = Conn.collect_list (regions param) () in
+          Response.list result)
+        )
+
     let districts =
       req
         ~name: "districts"
         ~arg:  "arg"
         ~regions: Regions.districts
-        ~list: Response.list
 
     let municipalities =
       req
         ~name: "municipalities"
         ~arg:  "district"
         ~regions: Regions.municipalities
-        ~list: Response.list
 
     let parishes =
       req
         ~name: "parishes"
         ~arg:  "municipality"
         ~regions: Regions.parishes
-        ~list: Response.list
   end
 
   module Elections = struct
+    let req ~name ~arg ~regions ~list =
+      Dream.get (Printf.sprintf "/%s/:%s" name arg)
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+          let param = Dream.param req arg in
+          let%lwt result = Conn.collect_list (regions param) () in
+          list result)
+        )
+
     let types =
-      req
-        ~name: "types"
-        ~arg:  "arg"
-        ~regions: Elections.election_types
-        ~list: Response.list
+      Dream.get "/types/:arg"
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+          let%lwt result = Conn.collect_list Elections.election_types () in
+          Response.list result)
+        )
 
     let years =
       req
         ~name: "years"
-        ~arg:  "arg"
+        ~arg:  "election_type"
         ~regions: Elections.election_years
         ~list: Response.list_int
 
@@ -142,26 +148,54 @@ module Api = struct
     let country_districts =
       req
         ~name: "country"
-        ~map: Map.country_districts
-        ~precision: 50
+        ~map: Backend.Map.Map.country_districts
+        ~precision: 5
 
     let district_municipalities =
       req
         ~name: "district"
-        ~map: Map.district_municipalities
-        ~precision: 1
+        ~map: Backend.Map.Map.district_municipalities
+        ~precision: 5
 
     let municipality_parishes =
       req
         ~name: "municipality"
-        ~map: Map.municipality_parishes
-        ~precision: 1
+        ~map: Backend.Map.Map.municipality_parishes
+        ~precision: 5
 
     let parish =
-      req
-        ~name: "parish"
-        ~map: Map.parish
-        ~precision: 1
+      Dream.get "/parish/:parish"
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+
+          let parish_name = Dream.param req "parish" in
+          let election_type =
+            Dream.query req "type"
+            |> Option.value ~default:"autarquicas"
+          in
+          let election_year =
+            Dream.query req "year"
+            |> Option.value ~default:"2025"
+            |> int_of_string
+          in
+          let office =
+            Dream.query req "office"
+            |> Option.value ~default:"assembleia de freguesia"
+          in
+
+          let%lwt result =
+            Conn.find_opt
+              (Backend.Map.Map.parish
+                 parish_name
+                 ~precision:5
+                 ~election_type
+                 ~election_year
+                 ~office)
+              ()
+          in
+
+          Response.one result
+        ))
   end
 
   module Table = struct
