@@ -1,12 +1,9 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-psql -d elections -v ON_ERROR_STOP=1 -f sql/reset.sql
-psql -d elections -v ON_ERROR_STOP=1 -f sql/extensions.sql
-psql -d elections -v ON_ERROR_STOP=1 -f sql/operational_schema.sql
-psql -d elections -v ON_ERROR_STOP=1 -f sql/init.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init/reset.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init/extensions.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/schema/operational.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init/populate.sql
 psql -d elections -v ON_ERROR_STOP=1 -f sql/functions_triggers.sql
-psql -d elections -v ON_ERROR_STOP=1 -f sql/warehouse_schema.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/schema/warehouse.sql
 
 export DATABASE_URL='postgresql://localhost/elections'
 
@@ -24,7 +21,7 @@ DROP TABLE IF EXISTS public.tracks_braga CASCADE;
 psql -d elections -v ON_ERROR_STOP=1 -f data/spatial_class_tables.sql
 
 # Create/update spatial enrichment procedure.
-psql -d elections -v ON_ERROR_STOP=1 -f sql/import_spatial.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init/spatial.sql
 
 mkdir -p data/converted
 
@@ -644,4 +641,4 @@ FROM checks
 ORDER BY check_name;
 "
 
-psql -d elections -v ON_ERROR_STOP=1 -f sql/cleanup_spatial_leftovers.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init/cleanup.sql

@@ -2,14 +2,14 @@ CREATE SCHEMA IF NOT EXISTS op;
 
 CREATE TABLE IF NOT EXISTS op.election_type (
     election_type_id bigserial PRIMARY KEY,
-    code text NOT NULL UNIQUE,              -- AUTARQUICAS, LEGISLATIVAS, EUROPEIAS, PRESIDENCIAIS
+    code text NOT NULL UNIQUE, -- AUTARQUICAS, LEGISLATIVAS, EUROPEIAS, PRESIDENCIAIS
     name text NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS op.election (
     election_id bigserial PRIMARY KEY,
     election_type_id bigint NOT NULL REFERENCES op.election_type(election_type_id),
-    code text NOT NULL UNIQUE,              -- AUTARQUICAS_2021, LEGISLATIVAS_2022
+    code text NOT NULL UNIQUE, -- AUTARQUICAS_2021, LEGISLATIVAS_2022
     name text NOT NULL,
     election_date date,
     election_year int NOT NULL CHECK (election_year BETWEEN 1900 AND 2200),
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS op.election (
 
 CREATE TABLE IF NOT EXISTS op.office (
     office_id bigserial PRIMARY KEY,
-    code text NOT NULL UNIQUE,              -- CM, AM, AF, AR, PR, PE
+    code text NOT NULL UNIQUE, -- CM, AM, AF, AR, PR, PE
     name text NOT NULL,
     scope_level text NOT NULL CHECK (scope_level IN ('country','district','municipality','parish'))
 );
@@ -36,11 +36,11 @@ CREATE TABLE IF NOT EXISTS op.territory_level (
 CREATE TABLE IF NOT EXISTS op.territory (
     territory_id bigserial PRIMARY KEY,
     level_id smallint NOT NULL REFERENCES op.territory_level(territory_level_id),
-    code text NOT NULL UNIQUE,              -- PT, 01, 0101, 010103
+    code text NOT NULL UNIQUE, -- PT, 01, 0101, 010103
     name text NOT NULL,
     parent_id bigint REFERENCES op.territory(territory_id),
     normalized_name text,
-    geom geometry(MultiPolygon,4326),       -- always WGS84 for frontend/Leaflet
+    geom geometry(MultiPolygon,4326), -- might need changing
     source_table text,
     source_srid int,
     created_at timestamptz NOT NULL DEFAULT now(),
