@@ -53,6 +53,16 @@ python3 etl/import_election_results.py \
   --election-code LEGISLATIVAS_2022 \
   --layout legislativas
 
+python3 etl/import_election_results.py \
+  --file "data/2024_ar_quadro_resultados.xlsx" \
+  --election-code LEGISLATIVAS_2024 \
+  --layout legislativas
+
+python3 etl/import_election_results.py \
+  --file "data/2025_ar_mapa_resultados.xlsx" \
+  --election-code LEGISLATIVAS_2025 \
+  --layout legislativas
+
 # Enrich op.territory with geometry after all election territories exist.
 psql -d elections -v ON_ERROR_STOP=1 -c "CALL op.load_territories_from_spatial_data();"
 
@@ -128,7 +138,9 @@ WHERE e.code IN (
     'AUTARQUICAS_2017',
     'AUTARQUICAS_2021',
     'AUTARQUICAS_2025',
-    'LEGISLATIVAS_2022'
+    'LEGISLATIVAS_2022',
+    'LEGISLATIVAS_2024',
+    'LEGISLATIVAS_2025'
 )
 GROUP BY e.code, o.code
 ORDER BY e.code, o.code;
@@ -237,75 +249,88 @@ FROM checks
 ORDER BY check_name;
 "
 
-# Focused AR 2022 checks.
+# Focused AR checks.
+# Validates all imported legislative elections.
 psql -d elections -c "
-WITH checks AS (
-    SELECT 'ar_2022_turnout_circles' AS check_name, COUNT(*)::bigint AS value, 22::bigint AS expected
-    FROM op.turnout_result tr
-    JOIN op.election e ON e.election_id = tr.election_id
-    JOIN op.office o ON o.office_id = tr.office_id
-    WHERE e.code = 'LEGISLATIVAS_2022'
-      AND o.code = 'AR'
+WITH expected AS (
+    SELECT *
+    FROM (
+        VALUES
+            ('LEGISLATIVAS_2022', 22::bigint, 5417715::bigint, 5564539::bigint, 63103::bigint, 83721::bigint, 230::bigint, 62::bigint),
+            ('LEGISLATIVAS_2024', 22::bigint, 6194709::bigint, 6476952::bigint, 89847::bigint, 192396::bigint, 230::bigint, 77::bigint),
+            ('LEGISLATIVAS_2025', 22::bigint, 6059321::bigint, 6319969::bigint, 87654::bigint, 172994::bigint, 230::bigint, 76::bigint)
+    ) AS x(
+        election_code,
+        expected_circles,
+        expected_candidate_votes,
+        expected_voters,
+        expected_blank_votes,
+        expected_null_votes,
+        expected_seats,
+        expected_seat_rows
+    )
+),
 
-    UNION ALL
+turnout_actual AS (
+    SELECT
+        e.code AS election_code,
+        COUNT(*)::bigint AS turnout_circles,
+        COALESCE(SUM(tr.voters), 0)::bigint AS voters,
+        COALESCE(SUM(tr.blank_votes), 0)::bigint AS blank_votes,
+        COALESCE(SUM(tr.null_votes), 0)::bigint AS null_votes
+    FROM op.election e
+    JOIN op.office o ON o.code = 'AR'
+    LEFT JOIN op.turnout_result tr
+      ON tr.election_id = e.election_id
+     AND tr.office_id = o.office_id
+    WHERE e.code IN (
+        'LEGISLATIVAS_2022',
+        'LEGISLATIVAS_2024',
+        'LEGISLATIVAS_2025'
+    )
+    GROUP BY e.code
+),
 
-    SELECT 'ar_2022_candidate_votes_sum', COALESCE(SUM(vr.votes), 0)::bigint, 5417715::bigint
-    FROM op.vote_result vr
-    JOIN op.election e ON e.election_id = vr.election_id
-    JOIN op.office o ON o.office_id = vr.office_id
-    WHERE e.code = 'LEGISLATIVAS_2022'
-      AND o.code = 'AR'
+vote_actual AS (
+    SELECT
+        e.code AS election_code,
+        COALESCE(SUM(vr.votes), 0)::bigint AS candidate_votes
+    FROM op.election e
+    JOIN op.office o ON o.code = 'AR'
+    LEFT JOIN op.vote_result vr
+      ON vr.election_id = e.election_id
+     AND vr.office_id = o.office_id
+    WHERE e.code IN (
+        'LEGISLATIVAS_2022',
+        'LEGISLATIVAS_2024',
+        'LEGISLATIVAS_2025'
+    )
+    GROUP BY e.code
+),
 
-    UNION ALL
+seat_actual AS (
+    SELECT
+        e.code AS election_code,
+        COALESCE(SUM(sr.seats), 0)::bigint AS seats,
+        COUNT(sr.*)::bigint AS seat_rows
+    FROM op.election e
+    JOIN op.office o ON o.code = 'AR'
+    LEFT JOIN op.seat_result sr
+      ON sr.election_id = e.election_id
+     AND sr.office_id = o.office_id
+     AND sr.method = 'official'
+    WHERE e.code IN (
+        'LEGISLATIVAS_2022',
+        'LEGISLATIVAS_2024',
+        'LEGISLATIVAS_2025'
+    )
+    GROUP BY e.code
+),
 
-    SELECT 'ar_2022_voters_sum', COALESCE(SUM(tr.voters), 0)::bigint, 5564539::bigint
-    FROM op.turnout_result tr
-    JOIN op.election e ON e.election_id = tr.election_id
-    JOIN op.office o ON o.office_id = tr.office_id
-    WHERE e.code = 'LEGISLATIVAS_2022'
-      AND o.code = 'AR'
-
-    UNION ALL
-
-    SELECT 'ar_2022_blank_sum', COALESCE(SUM(tr.blank_votes), 0)::bigint, 63103::bigint
-    FROM op.turnout_result tr
-    JOIN op.election e ON e.election_id = tr.election_id
-    JOIN op.office o ON o.office_id = tr.office_id
-    WHERE e.code = 'LEGISLATIVAS_2022'
-      AND o.code = 'AR'
-
-    UNION ALL
-
-    SELECT 'ar_2022_null_sum', COALESCE(SUM(tr.null_votes), 0)::bigint, 83721::bigint
-    FROM op.turnout_result tr
-    JOIN op.election e ON e.election_id = tr.election_id
-    JOIN op.office o ON o.office_id = tr.office_id
-    WHERE e.code = 'LEGISLATIVAS_2022'
-      AND o.code = 'AR'
-
-    UNION ALL
-
-    SELECT 'ar_2022_official_seats_sum', COALESCE(SUM(sr.seats), 0)::bigint, 230::bigint
-    FROM op.seat_result sr
-    JOIN op.election e ON e.election_id = sr.election_id
-    JOIN op.office o ON o.office_id = sr.office_id
-    WHERE e.code = 'LEGISLATIVAS_2022'
-      AND o.code = 'AR'
-      AND sr.method = 'official'
-
-    UNION ALL
-
-    SELECT 'ar_2022_official_seat_rows', COUNT(*)::bigint, 62::bigint
-    FROM op.seat_result sr
-    JOIN op.election e ON e.election_id = sr.election_id
-    JOIN op.office o ON o.office_id = sr.office_id
-    WHERE e.code = 'LEGISLATIVAS_2022'
-      AND o.code = 'AR'
-      AND sr.method = 'official'
-
-    UNION ALL
-
-    SELECT 'ar_2022_turnout_math_errors', COUNT(*)::bigint, 0::bigint
+turnout_math_errors AS (
+    SELECT
+        e.code AS election_code,
+        COUNT(*)::bigint AS turnout_math_errors
     FROM op.result_summary rs
     JOIN op.turnout_result tr
       ON tr.election_id = rs.election_id
@@ -313,17 +338,103 @@ WITH checks AS (
      AND tr.territory_id = rs.territory_id
     JOIN op.election e ON e.election_id = rs.election_id
     JOIN op.office o ON o.office_id = rs.office_id
-    WHERE e.code = 'LEGISLATIVAS_2022'
+    WHERE e.code IN (
+        'LEGISLATIVAS_2022',
+        'LEGISLATIVAS_2024',
+        'LEGISLATIVAS_2025'
+    )
       AND o.code = 'AR'
       AND rs.candidate_votes <> tr.voters - tr.blank_votes - tr.null_votes
+    GROUP BY e.code
+),
+
+checks AS (
+    SELECT
+        expected.election_code,
+        'turnout_circles' AS check_name,
+        COALESCE(turnout_actual.turnout_circles, 0) AS value,
+        expected.expected_circles AS expected
+    FROM expected
+    LEFT JOIN turnout_actual USING (election_code)
+
+    UNION ALL
+
+    SELECT
+        expected.election_code,
+        'candidate_votes_sum',
+        COALESCE(vote_actual.candidate_votes, 0),
+        expected.expected_candidate_votes
+    FROM expected
+    LEFT JOIN vote_actual USING (election_code)
+
+    UNION ALL
+
+    SELECT
+        expected.election_code,
+        'voters_sum',
+        COALESCE(turnout_actual.voters, 0),
+        expected.expected_voters
+    FROM expected
+    LEFT JOIN turnout_actual USING (election_code)
+
+    UNION ALL
+
+    SELECT
+        expected.election_code,
+        'blank_sum',
+        COALESCE(turnout_actual.blank_votes, 0),
+        expected.expected_blank_votes
+    FROM expected
+    LEFT JOIN turnout_actual USING (election_code)
+
+    UNION ALL
+
+    SELECT
+        expected.election_code,
+        'null_sum',
+        COALESCE(turnout_actual.null_votes, 0),
+        expected.expected_null_votes
+    FROM expected
+    LEFT JOIN turnout_actual USING (election_code)
+
+    UNION ALL
+
+    SELECT
+        expected.election_code,
+        'official_seats_sum',
+        COALESCE(seat_actual.seats, 0),
+        expected.expected_seats
+    FROM expected
+    LEFT JOIN seat_actual USING (election_code)
+
+    UNION ALL
+
+    SELECT
+        expected.election_code,
+        'official_seat_rows',
+        COALESCE(seat_actual.seat_rows, 0),
+        expected.expected_seat_rows
+    FROM expected
+    LEFT JOIN seat_actual USING (election_code)
+
+    UNION ALL
+
+    SELECT
+        expected.election_code,
+        'turnout_math_errors',
+        COALESCE(turnout_math_errors.turnout_math_errors, 0),
+        0::bigint
+    FROM expected
+    LEFT JOIN turnout_math_errors USING (election_code)
 )
 SELECT
+    election_code,
     check_name,
     value,
     expected,
     CASE WHEN value = expected THEN 'OK' ELSE 'FAIL' END AS status
 FROM checks
-ORDER BY check_name;
+ORDER BY election_code, check_name;
 "
 
 # Spatial coverage report.
@@ -480,7 +591,11 @@ WITH checks AS (
     WHERE tl.code IN ('country', 'district', 'municipality')
       AND t.geom IS NULL
       AND NOT (
-          e.code = 'LEGISLATIVAS_2022'
+          e.code IN (
+              'LEGISLATIVAS_2022',
+              'LEGISLATIVAS_2024',
+              'LEGISLATIVAS_2025'
+          )
           AND o.code = 'AR'
           AND t.code IN ('21', '22')
       )

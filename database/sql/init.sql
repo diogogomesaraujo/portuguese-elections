@@ -65,6 +65,28 @@ ON CONFLICT (code) DO UPDATE SET
     source_name = EXCLUDED.source_name,
     updated_at = now();
 
+INSERT INTO op.election(election_type_id, code, name, election_date, election_year, source_name)
+SELECT election_type_id, 'LEGISLATIVAS_2024', 'Eleições Legislativas 2024', DATE '2024-03-10', 2024, 'CNE Quadro de Resultados AR 2024'
+FROM op.election_type
+WHERE code = 'LEGISLATIVAS'
+ON CONFLICT (code) DO UPDATE SET
+    name = EXCLUDED.name,
+    election_date = EXCLUDED.election_date,
+    election_year = EXCLUDED.election_year,
+    source_name = EXCLUDED.source_name,
+    updated_at = now();
+
+INSERT INTO op.election(election_type_id, code, name, election_date, election_year, source_name)
+SELECT election_type_id, 'LEGISLATIVAS_2025', 'Eleições Legislativas 2025', DATE '2025-05-18', 2025, 'CNE Quadro de Resultados AR 2025'
+FROM op.election_type
+WHERE code = 'LEGISLATIVAS'
+ON CONFLICT (code) DO UPDATE SET
+    name = EXCLUDED.name,
+    election_date = EXCLUDED.election_date,
+    election_year = EXCLUDED.election_year,
+    source_name = EXCLUDED.source_name,
+    updated_at = now();
+
 
 INSERT INTO op.political_entity(sigla, name, entity_type, color_hex) VALUES
 ('PS',        'Partido Socialista',                              'party',     '#FF66A3'),
