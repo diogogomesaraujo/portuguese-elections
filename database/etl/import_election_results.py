@@ -112,24 +112,18 @@ def canonical_territory_code(
     raw_code: str, office_code: str, freguesia: str | None
 ) -> str:
     code = raw_code.zfill(6)
-
     if office_code == "AF":
         return code
-
     if office_code in {"CM", "AM"}:
         if code.endswith("0000"):
             return code[:2]
         return code[:4]
-
     if office_code == LEGISLATIVE_OFFICE_CODE:
         return code[:2]
-
     if freguesia and not re.fullmatch(r"\(\d+\)", freguesia.strip()):
         return code
-
     if code.endswith("0000"):
         return code[:2]
-
     return code[:4]
 
 
@@ -498,45 +492,68 @@ class LegislativasParser:
             raise RuntimeError("No legislative result-circle columns found.")
         return cols
 
-    def metric_value_by_label(
-        self, label: str, circle_cols: list[tuple[int, str, str]]
+    def metric_value_by_labels(
+        self,
+        labels: list[str],
+        circle_cols: list[tuple[int, str, str]],
     ) -> dict[str, int]:
-        wanted = normalize_header_text(label)
+        wanted = {normalize_header_text(label) for label in labels}
+
         for row_no in range(1, self.sheet.max_row + 1):
-            if normalize_header_text(self.sheet.cell(row_no, 1).value) != wanted:
+            if normalize_header_text(self.sheet.cell(row_no, 1).value) not in wanted:
                 continue
+
             out: dict[str, int] = {}
+
             for col_idx, code, _name in circle_cols:
                 value = as_int(self.sheet.cell(row_no, col_idx).value)
+
                 if value is None:
                     raise RuntimeError(
-                        f"Missing {label} for circle {code} at row {row_no}, column {col_idx}."
+                        f"Missing metric {labels!r} for circle {code} "
+                        f"at row {row_no}, column {col_idx}."
                     )
+
                 out[code] = value
+
             return out
-        raise RuntimeError(f"Could not find required metric row {label!r}.")
+
+        raise RuntimeError(f"Could not find required metric row among {labels!r}.")
 
     def parse_rows(self) -> Iterable[ParsedRow]:
         circle_cols = self.circle_columns()
-        registered_by_code = self.metric_value_by_label("Inscritos", circle_cols)
-        voters_by_code = self.metric_value_by_label("Votantes (VTT)", circle_cols)
-        blank_by_code = self.metric_value_by_label("Brancos", circle_cols)
-        null_by_code = self.metric_value_by_label("Nulos", circle_cols)
+        registered_by_code = self.metric_value_by_labels(["Inscritos"], circle_cols)
+        voters_by_code = self.metric_value_by_labels(
+            ["Votantes", "Votantes (VTT)"], circle_cols
+        )
+        blank_by_code = self.metric_value_by_labels(["Brancos"], circle_cols)
+        null_by_code = self.metric_value_by_labels(["Nulos"], circle_cols)
 
         party_vote_rows: list[tuple[int, str]] = []
+
+        non_party_rows = {
+            "INSCRITOS",
+            "VOTANTES",
+            "VOTANTES(VTT)",
+            "ABSTENCAO",
+            "ABSTENÇÃO",
+            "BRANCOS",
+            "NULOS",
+            "VOTOSVAL.EXP.(VVE)",
+            "VOTOSVALEXP.(VVE)",
+            "VOTOSVALIDAMENTEEXPRESSOS",
+        }
+
         for row_no in range(1, self.sheet.max_row + 1):
             sigla = normalize_sigla(self.sheet.cell(row_no, 1).value)
             metric = normalize_header_text(self.sheet.cell(row_no, 2).value)
+
             if not sigla or metric != "NUMERO":
                 continue
-            if sigla in {
-                "INSCRITOS",
-                "VOTANTES(VTT)",
-                "BRANCOS",
-                "NULOS",
-                "VOTOSVAL.EXP.(VVE)",
-            }:
+
+            if sigla in non_party_rows:
                 continue
+
             party_vote_rows.append((row_no, sigla))
 
         if not party_vote_rows:
@@ -577,11 +594,31 @@ class LegislativasParser:
     def parse_seats(self) -> Iterable[ParsedSeat]:
         circle_cols = self.circle_columns()
         party_vote_rows: list[tuple[int, str]] = []
+
+        non_party_rows = {
+            "INSCRITOS",
+            "VOTANTES",
+            "VOTANTES(VTT)",
+            "ABSTENCAO",
+            "ABSTENÇÃO",
+            "BRANCOS",
+            "NULOS",
+            "VOTOSVAL.EXP.(VVE)",
+            "VOTOSVALEXP.(VVE)",
+            "VOTOSVALIDAMENTEEXPRESSOS",
+        }
+
         for row_no in range(1, self.sheet.max_row + 1):
             sigla = normalize_sigla(self.sheet.cell(row_no, 1).value)
             metric = normalize_header_text(self.sheet.cell(row_no, 2).value)
-            if sigla and metric == "NUMERO":
-                party_vote_rows.append((row_no, sigla))
+
+            if not sigla or metric != "NUMERO":
+                continue
+
+            if sigla in non_party_rows:
+                continue
+
+            party_vote_rows.append((row_no, sigla))
 
         for vote_row_no, sigla in party_vote_rows:
             seat_row_no = vote_row_no + 2
