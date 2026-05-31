@@ -141,7 +141,7 @@ module Api = struct
   let run =
     Dream.run
     @@ Dream.logger
-    @@ Dream.sql_pool "postgresql://localhost:5432/spatial"
+    @@ Dream.sql_pool "postgresql://localhost:5432/elections"
     @@ Dream.router [
       Dream.scope "/regions" [Dream.memory_sessions] [
         Regions.districts;
