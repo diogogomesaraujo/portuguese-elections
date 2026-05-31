@@ -8,7 +8,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 import psycopg2
 from openpyxl import load_workbook
@@ -43,30 +43,27 @@ PARTY_HEADERS = {
     "PCP-PEV",
 }
 
+LEGISLATIVE_OFFICE_CODE = "AR"
+
 
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
-
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
-
     return h.hexdigest()
 
 
 def as_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
-
     if isinstance(value, bool):
         return int(value)
-
     if isinstance(value, (int, float)):
         return int(value)
 
     s = str(value).strip().replace(" ", "")
-
-    if not s:
+    if not s or s == "-":
         return None
 
     try:
@@ -78,23 +75,25 @@ def as_int(value: Any) -> int | None:
 def clean_text(value: Any) -> str | None:
     if value is None:
         return None
-
     s = str(value).strip()
     return s or None
 
 
 def normalize_header_text(value: Any) -> str:
     text = clean_text(value)
-
     if not text:
         return ""
-
     text = unicodedata.normalize("NFKD", text)
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = text.upper().strip()
-    text = re.sub(r"\s+", " ", text)
+    return re.sub(r"\s+", " ", text)
 
-    return text
+
+def normalize_sigla(value: Any) -> str | None:
+    text = clean_text(value)
+    if not text:
+        return None
+    return re.sub(r"\s+", "", text.upper())
 
 
 def normalize_code(value: Any) -> str | None:
@@ -102,20 +101,15 @@ def normalize_code(value: Any) -> str | None:
         return None
 
     s = str(value).strip()
-
     if re.fullmatch(r"\d+(\.0)?", s):
         s = str(int(float(s)))
-
     if len(s) < 6:
         s = s.zfill(6)
-
     return s
 
 
 def canonical_territory_code(
-    raw_code: str,
-    office_code: str,
-    freguesia: str | None,
+    raw_code: str, office_code: str, freguesia: str | None
 ) -> str:
     code = raw_code.zfill(6)
 
@@ -125,8 +119,10 @@ def canonical_territory_code(
     if office_code in {"CM", "AM"}:
         if code.endswith("0000"):
             return code[:2]
-
         return code[:4]
+
+    if office_code == LEGISLATIVE_OFFICE_CODE:
+        return code[:2]
 
     if freguesia and not re.fullmatch(r"\(\d+\)", freguesia.strip()):
         return code
@@ -139,10 +135,8 @@ def canonical_territory_code(
 
 def parse_bracket_labels(cell: Any) -> list[str]:
     text = clean_text(cell)
-
     if not text:
         return []
-
     return [m.strip() for m in re.findall(r"\[([^\]]+)\]", text) if m.strip()]
 
 
@@ -153,21 +147,26 @@ def looks_like_coalition_sigla(sigla: str) -> bool:
 def safe_gce_sigla(sigla: str) -> str:
     if sigla in PARTY_HEADERS:
         return f"GCE-{sigla}"
-
     return sigla
 
 
 def entity_type_for_sigla(sigla: str) -> str:
     if sigla in PARTY_HEADERS:
         return "party"
-
     if sigla.startswith("GCE-") or sigla.startswith("MOV") or sigla.startswith("M.A"):
         return "gce"
-
     if "." in sigla or "/" in sigla:
         return "coalition"
-
     return "party"
+
+
+@dataclass(frozen=True)
+class ParsedSeat:
+    territory_code: str
+    office_code: str
+    sigla: str
+    entity_type: str
+    seats: int
 
 
 @dataclass(frozen=True)
@@ -175,6 +174,9 @@ class ParsedRow:
     row_no: int
     raw_code: str
     territory_code: str
+    territory_level: Literal["country", "district", "municipality", "parish"]
+    territory_name: str | None
+    parent_code: str | None
     concelho: str | None
     freguesia: str | None
     office_code: str
@@ -186,7 +188,7 @@ class ParsedRow:
     raw: dict[str, Any]
 
 
-class Parser:
+class AutarquicasParser:
     FIXED_COLS = 8
 
     def __init__(self, path: Path, sheet_name: str | None = None):
@@ -206,7 +208,6 @@ class Parser:
 
         self.header_row = self.detect_header_row()
         self.data_start_row = self.header_row + 1
-
         self.group_headers = [
             clean_text(c.value) for c in self.sheet[self.header_row - 1]
         ]
@@ -217,7 +218,6 @@ class Parser:
 
         if len(self.headers) >= 8:
             first_three = [normalize_header_text(v) for v in self.headers[:3]]
-
             if first_three == ["COD", "CONC", "FREG"]:
                 self.headers[0:8] = [
                     "CÓD",
@@ -233,14 +233,12 @@ class Parser:
     def detect_header_row(self) -> int:
         for row_no in range(1, 30):
             row_values = [normalize_header_text(c.value) for c in self.sheet[row_no]]
-
             has_code = any(
                 v in {"COD", "COD.", "CODIGO", "CODIGO.", "CÓD", "CÓD."}
                 for v in row_values
             )
             has_conc = "CONC" in row_values
             has_freg = "FREG" in row_values
-
             has_office = any(
                 v in {"ORG", "ORG.", "ORGAO", "ORGAO.", "ÓRG", "ÓRG."}
                 for v in row_values
@@ -250,33 +248,23 @@ class Parser:
 
             if has_code and has_office and has_registered and has_voters:
                 return row_no
-
             if has_code and has_conc and has_freg:
                 return row_no
 
-        raise RuntimeError(
-            f"Could not detect header row in sheet {self.sheet_name}. "
-            "Expected a row containing code headers."
-        )
+        raise RuntimeError(f"Could not detect header row in sheet {self.sheet_name}.")
 
     def result_columns(self) -> list[tuple[int, str]]:
         result_cols: list[tuple[int, str]] = []
-
         for idx, header in enumerate(self.headers, start=1):
             if idx <= self.FIXED_COLS or not header:
                 continue
-
             is_placeholder = re.fullmatch(r"\[[A-Z]\]", header) is not None
             is_special_label_col = "SIGLA" in header.upper()
-
             if is_special_label_col:
                 continue
-
             if header.startswith("[") and header.endswith("]") and not is_placeholder:
                 continue
-
             result_cols.append((idx, header))
-
         return result_cols
 
     def is_column_group(self, idx: int, wanted: str) -> bool:
@@ -284,69 +272,53 @@ class Parser:
         group_header = (
             self.group_headers[idx] if idx < len(self.group_headers) else None
         )
-
         header_norm = clean_text(header)
         group_norm = clean_text(group_header)
-
         if wanted == "coalition":
             return header_norm == "[SIGLA COL]" or group_norm == "SIGLAS COLIGAÇÕES"
-
         if wanted == "gce":
             return header_norm == "[SIGLA GCE]" or group_norm == "SIGLAS GCE"
-
         return False
 
     def row_coalition_labels(self, values: list[Any]) -> list[str]:
         labels: list[str] = []
-
         for idx, value in enumerate(values):
             header = self.headers[idx] if idx < len(self.headers) else None
             header_is_placeholder = (
                 header is not None and re.fullmatch(r"\[[A-Z]\]", header) is not None
             )
-
             if self.is_column_group(idx, "coalition"):
                 for label in parse_bracket_labels(value):
                     if label not in labels:
                         labels.append(label)
-
             elif self.is_column_group(idx, "gce"):
                 continue
-
             elif idx >= self.FIXED_COLS and not header_is_placeholder:
                 for label in parse_bracket_labels(value):
                     if looks_like_coalition_sigla(label) and label not in labels:
                         labels.append(label)
-
         return labels
 
     def row_gce_labels(self, values: list[Any]) -> list[str]:
         labels: list[str] = []
-
         for idx, value in enumerate(values):
             header = self.headers[idx] if idx < len(self.headers) else None
             header_is_placeholder = (
                 header is not None and re.fullmatch(r"\[[A-Z]\]", header) is not None
             )
-
             if self.is_column_group(idx, "gce"):
                 for label in parse_bracket_labels(value):
                     label = safe_gce_sigla(label)
-
                     if label not in labels:
                         labels.append(label)
-
             elif self.is_column_group(idx, "coalition"):
                 continue
-
             elif idx >= self.FIXED_COLS and not header_is_placeholder:
                 for label in parse_bracket_labels(value):
                     if not looks_like_coalition_sigla(label):
                         label = safe_gce_sigla(label)
-
                         if label not in labels:
                             labels.append(label)
-
         return labels
 
     def parse_rows(self) -> Iterable[ParsedRow]:
@@ -357,12 +329,10 @@ class Parser:
             start=self.data_start_row,
         ):
             values = list(row)
-
             raw_code = normalize_code(values[0] if len(values) > 0 else None)
             concelho = clean_text(values[1] if len(values) > 1 else None)
             freguesia = clean_text(values[2] if len(values) > 2 else None)
             office_code = clean_text(values[3] if len(values) > 3 else None)
-
             if not raw_code or not office_code:
                 continue
 
@@ -370,56 +340,59 @@ class Parser:
             voters = as_int(values[5] if len(values) > 5 else None)
             blank = as_int(values[6] if len(values) > 6 else None)
             null = as_int(values[7] if len(values) > 7 else None)
-
             if registered is None or voters is None or blank is None or null is None:
                 continue
 
-            territory_code = canonical_territory_code(
-                raw_code,
-                office_code,
-                freguesia,
-            )
+            territory_code = canonical_territory_code(raw_code, office_code, freguesia)
+            raw_6 = raw_code.zfill(6)
+
+            if office_code == "AF":
+                territory_level: Literal[
+                    "country", "district", "municipality", "parish"
+                ] = "parish"
+                territory_name = freguesia
+                parent_code = raw_6[:4]
+            elif office_code in {"CM", "AM"}:
+                if territory_code == raw_6[:2]:
+                    territory_level = "district"
+                    territory_name = f"Distrito {territory_code}"
+                    parent_code = "PT"
+                else:
+                    territory_level = "municipality"
+                    territory_name = concelho
+                    parent_code = raw_6[:2]
+            else:
+                territory_level = "district"
+                territory_name = concelho or freguesia or territory_code
+                parent_code = "PT"
 
             row_coalition_labels = self.row_coalition_labels(values)
             row_gce_labels = self.row_gce_labels(values)
-
             if row_coalition_labels:
                 self.last_coalition_labels_ordered = row_coalition_labels
-
             if row_gce_labels:
                 self.last_gce_labels_ordered = row_gce_labels
 
             coalition_labels_ordered = (
-                row_coalition_labels
-                if row_coalition_labels
-                else self.last_coalition_labels_ordered
+                row_coalition_labels or self.last_coalition_labels_ordered
             )
-
-            gce_labels_ordered = (
-                row_gce_labels if row_gce_labels else self.last_gce_labels_ordered
-            )
+            gce_labels_ordered = row_gce_labels or self.last_gce_labels_ordered
 
             votes: list[tuple[str, str, int, int]] = []
             coalition_votes_seen = 0
             gce_votes_seen = 0
-            used_vote_columns: set[int] = set()
 
             for display_order, (col_idx, raw_sigla) in enumerate(
-                result_columns,
-                start=1,
+                result_columns, start=1
             ):
-                used_vote_columns.add(col_idx)
-
                 vote_count = as_int(
                     values[col_idx - 1] if col_idx - 1 < len(values) else None
                 )
-
                 if vote_count is None:
                     continue
 
                 if re.fullmatch(r"\[[A-Z]\]", raw_sigla):
                     placeholder_letter = raw_sigla.strip("[]")
-
                     if placeholder_letter in {"A", "B", "C"}:
                         if coalition_votes_seen < len(coalition_labels_ordered):
                             sigla = coalition_labels_ordered[coalition_votes_seen]
@@ -427,15 +400,9 @@ class Parser:
                             if vote_count == 0:
                                 coalition_votes_seen += 1
                                 continue
-
-                            sigla = (
-                                f"SOURCE-COL-{placeholder_letter}-"
-                                f"{territory_code}-{office_code}"
-                            )
-
+                            sigla = f"SOURCE-COL-{placeholder_letter}-{territory_code}-{office_code}"
                         coalition_votes_seen += 1
                         entity_type = "coalition"
-
                     elif placeholder_letter in {"D", "E", "F", "G"}:
                         if gce_votes_seen < len(gce_labels_ordered):
                             sigla = gce_labels_ordered[gce_votes_seen]
@@ -443,25 +410,14 @@ class Parser:
                             if vote_count == 0:
                                 gce_votes_seen += 1
                                 continue
-
-                            sigla = (
-                                f"SOURCE-GCE-{placeholder_letter}-"
-                                f"{territory_code}-{office_code}"
-                            )
-
+                            sigla = f"SOURCE-GCE-{placeholder_letter}-{territory_code}-{office_code}"
                         gce_votes_seen += 1
                         entity_type = "gce"
-
                     else:
                         if vote_count == 0:
                             continue
-
-                        sigla = (
-                            f"SOURCE-OTHER-{placeholder_letter}-"
-                            f"{territory_code}-{office_code}"
-                        )
+                        sigla = f"SOURCE-OTHER-{placeholder_letter}-{territory_code}-{office_code}"
                         entity_type = "other"
-
                 else:
                     sigla = raw_sigla
                     entity_type = entity_type_for_sigla(sigla)
@@ -477,6 +433,9 @@ class Parser:
                 row_no=row_no,
                 raw_code=raw_code,
                 territory_code=territory_code,
+                territory_level=territory_level,
+                territory_name=territory_name,
+                parent_code=parent_code,
                 concelho=concelho,
                 freguesia=freguesia,
                 office_code=office_code,
@@ -489,13 +448,183 @@ class Parser:
             )
 
 
+class LegislativasParser:
+    """Parser for CNE AR matrix workbooks like 2022ar_quadro_resultados.xlsx."""
+
+    def __init__(self, path: Path, sheet_name: str | None = None):
+        if path.suffix.lower() == ".xls":
+            raise SystemExit(
+                "Wrong file format. Convert .xls to .xlsx first with LibreOffice."
+            )
+
+        self.path = path
+        self.workbook = load_workbook(path, read_only=True, data_only=True)
+        self.sheet = (
+            self.workbook[sheet_name]
+            if sheet_name
+            else self.workbook[self.workbook.sheetnames[0]]
+        )
+        self.sheet_name = self.sheet.title
+        self.circle_header_row = self.detect_circle_header_row()
+        self.circle_name_row = self.circle_header_row + 1
+
+    def detect_circle_header_row(self) -> int:
+        for row_no in range(1, min(self.sheet.max_row, 20) + 1):
+            row_values = [normalize_header_text(c.value) for c in self.sheet[row_no]]
+            if "CIRCULO" in row_values or "CÍRCULO" in row_values:
+                return row_no
+        raise RuntimeError(
+            f"Could not detect legislative circle header row in sheet {self.sheet_name}."
+        )
+
+    def circle_columns(self) -> list[tuple[int, str, str]]:
+        cols: list[tuple[int, str, str]] = []
+        for col_idx in range(1, self.sheet.max_column + 1):
+            circle_no = self.sheet.cell(self.circle_header_row, col_idx).value
+            circle_name = clean_text(
+                self.sheet.cell(self.circle_name_row, col_idx).value
+            )
+            if circle_name is None:
+                continue
+            if normalize_header_text(circle_name) == "TOTAL":
+                continue
+
+            circle_code = as_int(circle_no)
+            if circle_code is None:
+                continue
+            cols.append((col_idx, f"{circle_code:02d}", circle_name))
+
+        if not cols:
+            raise RuntimeError("No legislative result-circle columns found.")
+        return cols
+
+    def metric_value_by_label(
+        self, label: str, circle_cols: list[tuple[int, str, str]]
+    ) -> dict[str, int]:
+        wanted = normalize_header_text(label)
+        for row_no in range(1, self.sheet.max_row + 1):
+            if normalize_header_text(self.sheet.cell(row_no, 1).value) != wanted:
+                continue
+            out: dict[str, int] = {}
+            for col_idx, code, _name in circle_cols:
+                value = as_int(self.sheet.cell(row_no, col_idx).value)
+                if value is None:
+                    raise RuntimeError(
+                        f"Missing {label} for circle {code} at row {row_no}, column {col_idx}."
+                    )
+                out[code] = value
+            return out
+        raise RuntimeError(f"Could not find required metric row {label!r}.")
+
+    def parse_rows(self) -> Iterable[ParsedRow]:
+        circle_cols = self.circle_columns()
+        registered_by_code = self.metric_value_by_label("Inscritos", circle_cols)
+        voters_by_code = self.metric_value_by_label("Votantes (VTT)", circle_cols)
+        blank_by_code = self.metric_value_by_label("Brancos", circle_cols)
+        null_by_code = self.metric_value_by_label("Nulos", circle_cols)
+
+        party_vote_rows: list[tuple[int, str]] = []
+        for row_no in range(1, self.sheet.max_row + 1):
+            sigla = normalize_sigla(self.sheet.cell(row_no, 1).value)
+            metric = normalize_header_text(self.sheet.cell(row_no, 2).value)
+            if not sigla or metric != "NUMERO":
+                continue
+            if sigla in {
+                "INSCRITOS",
+                "VOTANTES(VTT)",
+                "BRANCOS",
+                "NULOS",
+                "VOTOSVAL.EXP.(VVE)",
+            }:
+                continue
+            party_vote_rows.append((row_no, sigla))
+
+        if not party_vote_rows:
+            raise RuntimeError("No legislative party vote rows found.")
+
+        for territory_order, (col_idx, territory_code, territory_name) in enumerate(
+            circle_cols, start=1
+        ):
+            votes: list[tuple[str, str, int, int]] = []
+            for display_order, (vote_row_no, sigla) in enumerate(
+                party_vote_rows, start=1
+            ):
+                vote_count = as_int(self.sheet.cell(vote_row_no, col_idx).value)
+                if vote_count is None:
+                    continue
+                votes.append(
+                    (sigla, entity_type_for_sigla(sigla), vote_count, display_order)
+                )
+
+            yield ParsedRow(
+                row_no=territory_order,
+                raw_code=territory_code,
+                territory_code=territory_code,
+                territory_level="district",
+                territory_name=territory_name,
+                parent_code="PT",
+                concelho=None,
+                freguesia=None,
+                office_code=LEGISLATIVE_OFFICE_CODE,
+                registered_voters=registered_by_code[territory_code],
+                voters=voters_by_code[territory_code],
+                blank_votes=blank_by_code[territory_code],
+                null_votes=null_by_code[territory_code],
+                votes=votes,
+                raw={"circle_code": territory_code, "circle_name": territory_name},
+            )
+
+    def parse_seats(self) -> Iterable[ParsedSeat]:
+        circle_cols = self.circle_columns()
+        party_vote_rows: list[tuple[int, str]] = []
+        for row_no in range(1, self.sheet.max_row + 1):
+            sigla = normalize_sigla(self.sheet.cell(row_no, 1).value)
+            metric = normalize_header_text(self.sheet.cell(row_no, 2).value)
+            if sigla and metric == "NUMERO":
+                party_vote_rows.append((row_no, sigla))
+
+        for vote_row_no, sigla in party_vote_rows:
+            seat_row_no = vote_row_no + 2
+            if normalize_header_text(self.sheet.cell(seat_row_no, 2).value) != "MD":
+                continue
+            for col_idx, territory_code, _territory_name in circle_cols:
+                seat_count = as_int(self.sheet.cell(seat_row_no, col_idx).value)
+                if seat_count is None or seat_count <= 0:
+                    continue
+                yield ParsedSeat(
+                    territory_code=territory_code,
+                    office_code=LEGISLATIVE_OFFICE_CODE,
+                    sigla=sigla,
+                    entity_type=entity_type_for_sigla(sigla),
+                    seats=seat_count,
+                )
+
+
+def detect_parser_mode(
+    path: Path, sheet_name: str | None
+) -> Literal["autarquicas", "legislativas"]:
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    sheet = workbook[sheet_name] if sheet_name else workbook[workbook.sheetnames[0]]
+
+    for row_no in range(1, min(sheet.max_row, 20) + 1):
+        row_values = [normalize_header_text(c.value) for c in sheet[row_no]]
+        if any(
+            v in {"COD", "COD.", "CODIGO", "CODIGO.", "CÓD", "CÓD."} for v in row_values
+        ):
+            return "autarquicas"
+        if "CIRCULO" in row_values or "CÍRCULO" in row_values:
+            return "legislativas"
+
+    raise RuntimeError(
+        "Could not detect workbook layout. Use --layout autarquicas or --layout legislativas."
+    )
+
+
 def get_one(cur, sql: str, params: tuple[Any, ...]) -> Any:
     cur.execute(sql, params)
     row = cur.fetchone()
-
     if row is None:
         raise RuntimeError(f"Query returned no rows: {sql}")
-
     return row[0]
 
 
@@ -503,11 +632,19 @@ def build_territory_rows(
     parsed_rows: list[ParsedRow],
 ) -> list[tuple[str, str, str, str | None]]:
     territories: dict[str, tuple[str, str, str, str | None]] = {}
-
     territories["PT"] = ("PT", "country", "Portugal", None)
 
     for pr in parsed_rows:
         raw = pr.raw_code.zfill(6)
+
+        if pr.territory_level == "district":
+            territories[pr.territory_code] = (
+                pr.territory_code,
+                "district",
+                pr.territory_name or f"Círculo {pr.territory_code}",
+                pr.parent_code or "PT",
+            )
+            continue
 
         district_code = raw[:2]
         municipality_code = raw[:4]
@@ -515,15 +652,10 @@ def build_territory_rows(
 
         territories.setdefault(
             district_code,
-            (
-                district_code,
-                "district",
-                f"Distrito {district_code}",
-                "PT",
-            ),
+            (district_code, "district", f"Distrito {district_code}", "PT"),
         )
 
-        if raw.endswith("0000"):
+        if raw.endswith("0000") or municipality_code.endswith("00"):
             if pr.office_code == "AF" and pr.freguesia:
                 territories[parish_code] = (
                     parish_code,
@@ -531,18 +663,6 @@ def build_territory_rows(
                     pr.freguesia,
                     district_code,
                 )
-
-            continue
-
-        if municipality_code.endswith("00"):
-            if pr.office_code == "AF" and pr.freguesia:
-                territories[parish_code] = (
-                    parish_code,
-                    "parish",
-                    pr.freguesia,
-                    district_code,
-                )
-
             continue
 
         territories[municipality_code] = (
@@ -551,7 +671,6 @@ def build_territory_rows(
             pr.concelho or municipality_code,
             district_code,
         )
-
         if pr.office_code == "AF" and pr.freguesia:
             territories[parish_code] = (
                 parish_code,
@@ -560,35 +679,18 @@ def build_territory_rows(
                 municipality_code,
             )
 
-    level_order = {
-        "country": 0,
-        "district": 1,
-        "municipality": 2,
-        "parish": 3,
-    }
-
-    return sorted(
-        territories.values(),
-        key=lambda x: (level_order[x[1]], x[0]),
-    )
+    level_order = {"country": 0, "district": 1, "municipality": 2, "parish": 3}
+    return sorted(territories.values(), key=lambda x: (level_order[x[1]], x[0]))
 
 
 def bulk_upsert_territories(
-    cur,
-    territories: list[tuple[str, str, str, str | None]],
+    cur, territories: list[tuple[str, str, str, str | None]]
 ) -> None:
     for code, level_code, name, parent_code in territories:
         cur.execute(
             """
             INSERT INTO op.territory (
-                level_id,
-                code,
-                name,
-                parent_id,
-                normalized_name,
-                geom,
-                source_table,
-                source_srid
+                level_id, code, name, parent_id, normalized_name, geom, source_table, source_srid
             )
             SELECT
                 tl.territory_level_id,
@@ -600,27 +702,88 @@ def bulk_upsert_territories(
                 'election_etl_fallback',
                 NULL
             FROM op.territory_level tl
-            LEFT JOIN op.territory parent
-              ON parent.code = %s
+            LEFT JOIN op.territory parent ON parent.code = %s
             WHERE tl.code = %s
             ON CONFLICT (code)
             DO UPDATE SET
-                name = COALESCE(op.territory.name, EXCLUDED.name),
+                name = COALESCE(NULLIF(op.territory.name, ''), EXCLUDED.name),
                 parent_id = COALESCE(op.territory.parent_id, EXCLUDED.parent_id),
-                normalized_name = COALESCE(
-                    op.territory.normalized_name,
-                    EXCLUDED.normalized_name
-                ),
+                normalized_name = COALESCE(op.territory.normalized_name, EXCLUDED.normalized_name),
                 updated_at = now()
             """,
-            (
-                code,
-                name or code,
-                name or code,
-                parent_code,
-                level_code,
-            ),
+            (code, name or code, name or code, parent_code, level_code),
         )
+
+
+def save_official_seat(
+    cur,
+    election_code: str,
+    office_code: str,
+    territory_code: str,
+    sigla: str,
+    entity_type: str,
+    seats: int,
+) -> None:
+    cur.execute(
+        """
+        WITH ctx AS (
+            SELECT
+                e.election_id,
+                o.office_id,
+                t.territory_id,
+                op.save_political_entity(%s, %s) AS political_entity_id
+            FROM op.election e
+            JOIN op.office o ON o.code = %s
+            JOIN op.territory t ON t.code = %s
+            WHERE e.code = %s
+        ), candidate AS (
+            INSERT INTO op.candidacy (
+                election_id, office_id, territory_id, political_entity_id, source_label
+            )
+            SELECT election_id, office_id, territory_id, political_entity_id, %s
+            FROM ctx
+            ON CONFLICT (election_id, office_id, territory_id, political_entity_id)
+            DO UPDATE SET source_label = EXCLUDED.source_label
+            RETURNING candidacy_id, election_id, office_id, territory_id
+        )
+        INSERT INTO op.seat_result (
+            election_id, office_id, territory_id, candidacy_id, seats, method, updated_at
+        )
+        SELECT election_id, office_id, territory_id, candidacy_id, %s, 'official', now()
+        FROM candidate
+        ON CONFLICT (election_id, office_id, territory_id, candidacy_id)
+        DO UPDATE SET
+            seats = EXCLUDED.seats,
+            method = 'official',
+            updated_at = now()
+        """,
+        (sigla, entity_type, office_code, territory_code, election_code, sigla, seats),
+    )
+
+
+def save_official_seat_counts(cur, election_code: str, seats: list[ParsedSeat]) -> int:
+    totals: dict[tuple[str, str], int] = {}
+    for seat in seats:
+        totals[(seat.office_code, seat.territory_code)] = (
+            totals.get((seat.office_code, seat.territory_code), 0) + seat.seats
+        )
+
+    for (office_code, territory_code), total_seats in totals.items():
+        cur.execute(
+            """
+            INSERT INTO op.seat_count (election_id, office_id, territory_id, seats, source)
+            SELECT e.election_id, o.office_id, t.territory_id, %s, 'official'
+            FROM op.election e
+            JOIN op.office o ON o.code = %s
+            JOIN op.territory t ON t.code = %s
+            WHERE e.code = %s
+            ON CONFLICT (election_id, office_id, territory_id)
+            DO UPDATE SET seats = EXCLUDED.seats, source = EXCLUDED.source
+            """,
+            (total_seats, office_code, territory_code, election_code),
+        )
+
+    return len(totals)
 
 
 def main() -> None:
@@ -629,6 +792,10 @@ def main() -> None:
     ap.add_argument("--file", required=True, type=Path)
     ap.add_argument("--sheet")
     ap.add_argument("--election-code", default="AUTARQUICAS_2021")
+    ap.add_argument(
+        "--layout", choices=["auto", "autarquicas", "legislativas"], default="auto"
+    )
+    ap.add_argument("--skip-refresh", action="store_true")
     args = ap.parse_args()
 
     if not args.database_url:
@@ -636,8 +803,22 @@ def main() -> None:
             "DATABASE_URL missing. Set it in .env/export it or pass --database-url."
         )
 
-    parser = Parser(args.file, args.sheet)
+    layout = (
+        detect_parser_mode(args.file, args.sheet)
+        if args.layout == "auto"
+        else args.layout
+    )
+    parser: AutarquicasParser | LegislativasParser
+    if layout == "legislativas":
+        parser = LegislativasParser(args.file, args.sheet)
+    else:
+        parser = AutarquicasParser(args.file, args.sheet)
+
     file_hash = sha256_file(args.file)
+    parsed_rows = list(parser.parse_rows())
+    parsed_seats = (
+        list(parser.parse_seats()) if isinstance(parser, LegislativasParser) else []
+    )
 
     conn = psycopg2.connect(args.database_url)
     conn.autocommit = False
@@ -645,6 +826,8 @@ def main() -> None:
     rows_seen = 0
     rows_loaded = 0
     vote_cells = 0
+    seat_rows_loaded = 0
+    seat_contexts_loaded = 0
 
     with conn, conn.cursor() as cur:
         election_id = get_one(
@@ -656,33 +839,20 @@ def main() -> None:
         import_file_id = get_one(
             cur,
             """
-            INSERT INTO op.import_file (
-                election_id,
-                file_path,
-                sheet_name,
-                file_hash
-            )
+            INSERT INTO op.import_file (election_id, file_path, sheet_name, file_hash)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (election_id, file_hash, sheet_name)
             DO UPDATE SET imported_at = now()
             RETURNING import_file_id
             """,
-            (
-                election_id,
-                str(args.file),
-                parser.sheet_name,
-                file_hash,
-            ),
+            (election_id, str(args.file), parser.sheet_name, file_hash),
         )
-
-        parsed_rows = list(parser.parse_rows())
 
         territories = build_territory_rows(parsed_rows)
         bulk_upsert_territories(cur, territories)
 
         for pr in parsed_rows:
             rows_seen += 1
-
             cur.execute(
                 "SELECT op.save_turnout_result(%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
@@ -712,12 +882,28 @@ def main() -> None:
                     ),
                 )
                 vote_cells += 1
-
             rows_loaded += 1
 
+        if parsed_seats:
+            seat_contexts_loaded = save_official_seat_counts(
+                cur, args.election_code, parsed_seats
+            )
+            for seat in parsed_seats:
+                save_official_seat(
+                    cur,
+                    args.election_code,
+                    seat.office_code,
+                    seat.territory_code,
+                    seat.sigla,
+                    seat.entity_type,
+                    seat.seats,
+                )
+                seat_rows_loaded += 1
+
         cur.execute("CALL op.populate_seat_count();")
-        cur.execute("CALL op.calculate_seat_results()")
-        cur.execute("CALL wh.refresh_wh()")
+        cur.execute("CALL op.calculate_seat_results();")
+        if not args.skip_refresh:
+            cur.execute("CALL wh.refresh_wh();")
 
     conn.close()
 
@@ -726,11 +912,14 @@ def main() -> None:
             {
                 "file": str(args.file),
                 "sheet": parser.sheet_name,
+                "layout": layout,
                 "election_code": args.election_code,
                 "territories_preloaded": len(territories),
                 "rows_seen": rows_seen,
                 "rows_loaded": rows_loaded,
                 "vote_cells_loaded": vote_cells,
+                "official_seat_contexts_loaded": seat_contexts_loaded,
+                "official_seat_rows_loaded": seat_rows_loaded,
             },
             ensure_ascii=False,
             indent=2,

@@ -1,17 +1,18 @@
-psql -d elections -f sql/reset.sql
-psql -d elections -f sql/extensions.sql
-psql -d elections -f sql/operational_schema.sql
-psql -d elections -f sql/init.sql
-psql -d elections -f sql/functions_triggers.sql
-psql -d elections -f sql/warehouse_schema.sql
+#!/usr/bin/env bash
+set -euo pipefail
 
+psql -d elections -v ON_ERROR_STOP=1 -f sql/reset.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/extensions.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/operational_schema.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions_triggers.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/warehouse_schema.sql
 
 export DATABASE_URL='postgresql://localhost/elections'
 
-
 # Import spatial source tables.
 # This file is large, so ON_ERROR_STOP makes failures explicit.
-psql -d elections -c "
+psql -d elections -v ON_ERROR_STOP=1 -c "
 DROP TABLE IF EXISTS public.cont_freguesias CASCADE;
 DROP TABLE IF EXISTS public.raa_cen_ori_freguesias CASCADE;
 DROP TABLE IF EXISTS public.raa_oci_freguesias CASCADE;
@@ -19,11 +20,11 @@ DROP TABLE IF EXISTS public.ram_freguesias CASCADE;
 DROP TABLE IF EXISTS public.taxi_stands CASCADE;
 DROP TABLE IF EXISTS public.tracks_braga CASCADE;
 "
+
 psql -d elections -v ON_ERROR_STOP=1 -f data/spatial_class_tables.sql
 
 # Create/update spatial enrichment procedure.
-psql -d elections -f sql/import_spatial.sql
-
+psql -d elections -v ON_ERROR_STOP=1 -f sql/import_spatial.sql
 
 mkdir -p data/converted
 
@@ -32,30 +33,78 @@ mkdir -p data/converted
   --outdir data/converted \
   "data/01-mapa_I_vf_r2.xls"
 
-
 python3 etl/import_election_results.py \
   --file "data/converted/01-mapa_I_vf_r2.xlsx" \
-  --election-code AUTARQUICAS_2017
-
+  --election-code AUTARQUICAS_2017 \
+  --layout autarquicas
 
 python3 etl/import_election_results.py \
   --file "data/mapa_1_resultados.xlsx" \
-  --election-code AUTARQUICAS_2021
-
+  --election-code AUTARQUICAS_2021 \
+  --layout autarquicas
 
 python3 etl/import_election_results.py \
   --file "data/mapa_1_resultados_retificado.xlsx" \
-  --election-code AUTARQUICAS_2025
+  --election-code AUTARQUICAS_2025 \
+  --layout autarquicas
 
+python3 etl/import_election_results.py \
+  --file "data/2022ar_quadro_resultados.xlsx" \
+  --election-code LEGISLATIVAS_2022 \
+  --layout legislativas
 
 # Enrich op.territory with geometry after all election territories exist.
-psql -d elections -c "CALL op.load_territories_from_spatial_data();"
+psql -d elections -v ON_ERROR_STOP=1 -c "CALL op.load_territories_from_spatial_data();"
 
-# Calculate seats with D'Hondt where op.seat_count exists.
-psql -d elections -c "CALL op.calculate_seat_results();"
+# Build aggregate geometries for AR island circles.
+# 19 RA Açores = island districts 41..49
+# 20 RA Madeira = island districts 31..32
+psql -d elections -v ON_ERROR_STOP=1 <<'SQL'
+WITH azores_geom AS (
+    SELECT
+        ST_Multi(
+            ST_UnaryUnion(
+                ST_Collect(t.geom)
+            )
+        )::geometry(MultiPolygon, 4326) AS geom
+    FROM op.territory t
+    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+    WHERE tl.code = 'district'
+      AND t.code IN ('41', '42', '43', '44', '45', '46', '47', '48', '49')
+      AND t.geom IS NOT NULL
+),
+madeira_geom AS (
+    SELECT
+        ST_Multi(
+            ST_UnaryUnion(
+                ST_Collect(t.geom)
+            )
+        )::geometry(MultiPolygon, 4326) AS geom
+    FROM op.territory t
+    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
+    WHERE tl.code = 'district'
+      AND t.code IN ('31', '32')
+      AND t.geom IS NOT NULL
+)
+UPDATE op.territory target
+SET
+    geom = source.geom,
+    source_table = 'derived_ar_circle_from_island_districts',
+    source_srid = 4326,
+    updated_at = now()
+FROM (
+    SELECT '19' AS code, geom FROM azores_geom
+    UNION ALL
+    SELECT '20' AS code, geom FROM madeira_geom
+) source
+WHERE target.code = source.code
+  AND source.geom IS NOT NULL;
+SQL
 
-psql -d elections -c "CALL wh.refresh_wh();"
+# Calculate D'Hondt only where there are no official mandate rows.
+psql -d elections -v ON_ERROR_STOP=1 -c "CALL op.calculate_seat_results();"
 
+psql -d elections -v ON_ERROR_STOP=1 -c "CALL wh.refresh_wh();"
 
 psql -d elections -c "SELECT COUNT(*) AS territories FROM op.territory;"
 psql -d elections -c "SELECT COUNT(*) AS turnout_rows FROM op.turnout_result;"
@@ -67,7 +116,6 @@ psql -d elections -c "SELECT COUNT(*) AS seat_count_rows FROM op.seat_count;"
 psql -d elections -c "SELECT COUNT(*) AS seat_result_rows FROM op.seat_result;"
 psql -d elections -c "SELECT COUNT(*) AS wh_seat_rows FROM wh.fact_seat_result;"
 
-
 psql -d elections -c "
 SELECT
     e.code AS election,
@@ -76,12 +124,17 @@ SELECT
 FROM op.turnout_result tr
 JOIN op.election e ON e.election_id = tr.election_id
 JOIN op.office o ON o.office_id = tr.office_id
-WHERE e.code IN ('AUTARQUICAS_2017', 'AUTARQUICAS_2021', 'AUTARQUICAS_2025')
+WHERE e.code IN (
+    'AUTARQUICAS_2017',
+    'AUTARQUICAS_2021',
+    'AUTARQUICAS_2025',
+    'LEGISLATIVAS_2022'
+)
 GROUP BY e.code, o.code
 ORDER BY e.code, o.code;
 "
 
-
+# Generic data consistency checks.
 psql -d elections -c "
 WITH checks AS (
     SELECT 'active_raw_placeholders' AS check_name, COUNT(*) AS bad_count
@@ -184,8 +237,98 @@ FROM checks
 ORDER BY check_name;
 "
 
+# Focused AR 2022 checks.
+psql -d elections -c "
+WITH checks AS (
+    SELECT 'ar_2022_turnout_circles' AS check_name, COUNT(*)::bigint AS value, 22::bigint AS expected
+    FROM op.turnout_result tr
+    JOIN op.election e ON e.election_id = tr.election_id
+    JOIN op.office o ON o.office_id = tr.office_id
+    WHERE e.code = 'LEGISLATIVAS_2022'
+      AND o.code = 'AR'
+
+    UNION ALL
+
+    SELECT 'ar_2022_candidate_votes_sum', COALESCE(SUM(vr.votes), 0)::bigint, 5417715::bigint
+    FROM op.vote_result vr
+    JOIN op.election e ON e.election_id = vr.election_id
+    JOIN op.office o ON o.office_id = vr.office_id
+    WHERE e.code = 'LEGISLATIVAS_2022'
+      AND o.code = 'AR'
+
+    UNION ALL
+
+    SELECT 'ar_2022_voters_sum', COALESCE(SUM(tr.voters), 0)::bigint, 5564539::bigint
+    FROM op.turnout_result tr
+    JOIN op.election e ON e.election_id = tr.election_id
+    JOIN op.office o ON o.office_id = tr.office_id
+    WHERE e.code = 'LEGISLATIVAS_2022'
+      AND o.code = 'AR'
+
+    UNION ALL
+
+    SELECT 'ar_2022_blank_sum', COALESCE(SUM(tr.blank_votes), 0)::bigint, 63103::bigint
+    FROM op.turnout_result tr
+    JOIN op.election e ON e.election_id = tr.election_id
+    JOIN op.office o ON o.office_id = tr.office_id
+    WHERE e.code = 'LEGISLATIVAS_2022'
+      AND o.code = 'AR'
+
+    UNION ALL
+
+    SELECT 'ar_2022_null_sum', COALESCE(SUM(tr.null_votes), 0)::bigint, 83721::bigint
+    FROM op.turnout_result tr
+    JOIN op.election e ON e.election_id = tr.election_id
+    JOIN op.office o ON o.office_id = tr.office_id
+    WHERE e.code = 'LEGISLATIVAS_2022'
+      AND o.code = 'AR'
+
+    UNION ALL
+
+    SELECT 'ar_2022_official_seats_sum', COALESCE(SUM(sr.seats), 0)::bigint, 230::bigint
+    FROM op.seat_result sr
+    JOIN op.election e ON e.election_id = sr.election_id
+    JOIN op.office o ON o.office_id = sr.office_id
+    WHERE e.code = 'LEGISLATIVAS_2022'
+      AND o.code = 'AR'
+      AND sr.method = 'official'
+
+    UNION ALL
+
+    SELECT 'ar_2022_official_seat_rows', COUNT(*)::bigint, 62::bigint
+    FROM op.seat_result sr
+    JOIN op.election e ON e.election_id = sr.election_id
+    JOIN op.office o ON o.office_id = sr.office_id
+    WHERE e.code = 'LEGISLATIVAS_2022'
+      AND o.code = 'AR'
+      AND sr.method = 'official'
+
+    UNION ALL
+
+    SELECT 'ar_2022_turnout_math_errors', COUNT(*)::bigint, 0::bigint
+    FROM op.result_summary rs
+    JOIN op.turnout_result tr
+      ON tr.election_id = rs.election_id
+     AND tr.office_id = rs.office_id
+     AND tr.territory_id = rs.territory_id
+    JOIN op.election e ON e.election_id = rs.election_id
+    JOIN op.office o ON o.office_id = rs.office_id
+    WHERE e.code = 'LEGISLATIVAS_2022'
+      AND o.code = 'AR'
+      AND rs.candidate_votes <> tr.voters - tr.blank_votes - tr.null_votes
+)
+SELECT
+    check_name,
+    value,
+    expected,
+    CASE WHEN value = expected THEN 'OK' ELSE 'FAIL' END AS status
+FROM checks
+ORDER BY check_name;
+"
 
 # Spatial coverage report.
+# District coverage will not be 100% because AR has non-spatial foreign circles:
+# 21 Europa, 22 Fora da Europa.
 psql -d elections -c "
 SELECT
     tl.code AS level,
@@ -201,7 +344,6 @@ JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
 GROUP BY tl.code
 ORDER BY MIN(tl.depth);
 "
-
 
 # Parish geometry coverage by election.
 # Parish gaps are allowed for older elections because parish boundaries changed over time.
@@ -227,9 +369,10 @@ GROUP BY e.code
 ORDER BY e.code;
 "
 
-
 # Spatial consistency check.
-# Allows election-only parish placeholders directly under districts.
+# Allows:
+# - election-only parish placeholders directly under districts
+# - AR foreign circles 21/22 without geometry
 psql -d elections -c "
 WITH checks AS (
     SELECT
@@ -242,11 +385,12 @@ WITH checks AS (
     UNION ALL
 
     SELECT
-        'districts_have_geom',
+        'districts_have_geom_except_ar_foreign_circles',
         COUNT(*) FILTER (WHERE t.geom IS NULL)
     FROM op.territory t
     JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
     WHERE tl.code = 'district'
+      AND t.code NOT IN ('21', '22')
 
     UNION ALL
 
@@ -326,13 +470,20 @@ WITH checks AS (
     UNION ALL
 
     SELECT
-        'non_parish_without_geom_used_in_results',
+        'non_parish_without_geom_used_in_results_except_ar_foreign_circles',
         COUNT(DISTINCT t.territory_id)
     FROM op.turnout_result tr
+    JOIN op.election e ON e.election_id = tr.election_id
+    JOIN op.office o ON o.office_id = tr.office_id
     JOIN op.territory t ON t.territory_id = tr.territory_id
     JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
     WHERE tl.code IN ('country', 'district', 'municipality')
       AND t.geom IS NULL
+      AND NOT (
+          e.code = 'LEGISLATIVAS_2022'
+          AND o.code = 'AR'
+          AND t.code IN ('21', '22')
+      )
 
     UNION ALL
 

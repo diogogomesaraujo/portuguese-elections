@@ -54,6 +54,18 @@ ON CONFLICT (code) DO UPDATE SET
     source_name = EXCLUDED.source_name,
     updated_at = now();
 
+INSERT INTO op.election(election_type_id, code, name, election_date, election_year, source_name)
+SELECT election_type_id, 'LEGISLATIVAS_2022', 'Eleições Legislativas 2022', DATE '2022-01-30', 2022, 'CNE Quadro de Resultados AR 2022'
+FROM op.election_type
+WHERE code = 'LEGISLATIVAS'
+ON CONFLICT (code) DO UPDATE SET
+    name = EXCLUDED.name,
+    election_date = EXCLUDED.election_date,
+    election_year = EXCLUDED.election_year,
+    source_name = EXCLUDED.source_name,
+    updated_at = now();
+
+
 INSERT INTO op.political_entity(sigla, name, entity_type, color_hex) VALUES
 ('PS',        'Partido Socialista',                              'party',     '#FF66A3'),
 ('PPD/PSD',   'Partido Social Democrata',                        'party',     '#F28C00'),

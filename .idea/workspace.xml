@@ -2,12 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="c6bcc8d8-bb29-46cd-9bdd-cc0df77b3c9d" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/f58d6f02-f341-46a3-955b-4d6a28db2b1c.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/f58d6f02-f341-46a3-955b-4d6a28db2b1c.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/autarquicas_elections/sql/import_spatial.sql" beforeDir="false" afterPath="$PROJECT_DIR$/autarquicas_elections/sql/import_spatial.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/autarquicas_elections/sql/init.sql" beforeDir="false" afterPath="$PROJECT_DIR$/autarquicas_elections/sql/init.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/autarquicas_elections/sql/operational_schema.sql" beforeDir="false" afterPath="$PROJECT_DIR$/autarquicas_elections/sql/operational_schema.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/autarquicas_elections/sql/warehouse_schema.sql" beforeDir="false" afterPath="$PROJECT_DIR$/autarquicas_elections/sql/warehouse_schema.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/lib/map.ml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/lib/map.ml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
