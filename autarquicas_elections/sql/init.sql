@@ -53,3 +53,37 @@ ON CONFLICT (code) DO UPDATE SET
     election_year = EXCLUDED.election_year,
     source_name = EXCLUDED.source_name,
     updated_at = now();
+
+INSERT INTO op.political_entity(sigla, name, entity_type, color_hex) VALUES
+('PS',        'Partido Socialista',                              'party',     '#FF66A3'),
+('PPD/PSD',   'Partido Social Democrata',                        'party',     '#F28C00'),
+('CH',        'Chega',                                            'party',     '#202A44'),
+('IL',        'Iniciativa Liberal',                              'party',     '#00AEEF'),
+('PCP-PEV',   'CDU - Coligação Democrática Unitária',             'coalition', '#D71920'),
+('B.E.',      'Bloco de Esquerda',                               'party',     '#8B0000'),
+('CDS-PP',    'CDS - Partido Popular',                           'party',     '#0093DD'),
+('PAN',       'Pessoas-Animais-Natureza',                        'party',     '#007A3D'),
+('L',         'LIVRE',                                            'party',     '#C51B8A'),
+('ADN',       'Alternativa Democrática Nacional',                'party',     '#1E88E5'),
+('JPP',       'Juntos pelo Povo',                                 'party',     '#00A651'),
+('MPT',       'Partido da Terra',                                 'party',     '#6AB04C'),
+('R.I.R.',    'Reagir Incluir Reciclar',                          'party',     '#F4C430'),
+('PCTP/MRPP', 'Partido Comunista dos Trabalhadores Portugueses',   'party',     '#B30000'),
+('NC',        'Nós, Cidadãos!',                                  'party',     '#6C63FF'),
+('PPM',       'Partido Popular Monárquico',                      'party',     '#0057B8'),
+('A',         'Aliança',                                          'party',     '#00A6A6'),
+('MAS',       'Movimento Alternativa Socialista',                 'party',     '#7B1FA2'),
+('PDR',       'Partido Democrático Republicano',                  'party',     '#607D8B'),
+('PLS',       'Partido Liberal Social',                           'party',     '#9C27B0'),
+('PNR',       'Partido Nacional Renovador',                       'party',     '#4E342E'),
+('PPV/CDC',   'Portugal Pró Vida / Cidadania e Democracia Cristã', 'party',     '#795548'),
+('PTP',       'Partido Trabalhista Português',                    'party',     '#FF9800'),
+('PURP',      'Partido Unido dos Reformados e Pensionistas',       'party',     '#9E9E9E'),
+('E',         'Ergue-te',                                         'party',     '#111111'),
+('ND',        'Nova Direita',                                     'party',     '#263238'),
+('VP',        'Volt Portugal',                                    'party',     '#502379')
+ON CONFLICT (sigla) DO UPDATE SET
+    name = EXCLUDED.name,
+    entity_type = EXCLUDED.entity_type,
+    color_hex = EXCLUDED.color_hex,
+    updated_at = now();

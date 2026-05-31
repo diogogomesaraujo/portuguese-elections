@@ -60,7 +60,18 @@ SELECT
     political_entity_id AS political_entity_key,
     sigla,
     name,
-    entity_type
+    entity_type,
+    color_hex,
+    COALESCE(
+        color_hex,
+        CASE
+            WHEN entity_type = 'coalition' THEN '#666666'
+            WHEN entity_type = 'gce' THEN '#7A7A7A'
+            WHEN entity_type = 'blank' THEN '#FFFFFF'
+            WHEN entity_type = 'null' THEN '#000000'
+            ELSE '#999999'
+        END
+    ) AS color
 FROM op.political_entity;
 
 ALTER TABLE wh.dim_political_entity ADD PRIMARY KEY (political_entity_key);
@@ -201,7 +212,18 @@ BEGIN
         political_entity_id,
         sigla,
         name,
-        entity_type
+        entity_type,
+        color_hex,
+        COALESCE(
+            color_hex,
+            CASE
+                WHEN entity_type = 'coalition' THEN '#666666'
+                WHEN entity_type = 'gce' THEN '#7A7A7A'
+                WHEN entity_type = 'blank' THEN '#FFFFFF'
+                WHEN entity_type = 'null' THEN '#000000'
+                ELSE '#999999'
+            END
+        ) AS color
     FROM op.political_entity;
 
     INSERT INTO wh.fact_turnout

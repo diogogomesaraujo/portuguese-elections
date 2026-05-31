@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS op.election_type (
 CREATE TABLE IF NOT EXISTS op.election (
     election_id bigserial PRIMARY KEY,
     election_type_id bigint NOT NULL REFERENCES op.election_type(election_type_id),
-    code text NOT NULL UNIQUE,              -- AUTARQUICAS_2021, LEGISLATIVAS_2024
+    code text NOT NULL UNIQUE,              -- AUTARQUICAS_2021, LEGISLATIVAS_2022
     name text NOT NULL,
     election_date date,
     election_year int NOT NULL CHECK (election_year BETWEEN 1900 AND 2200),
@@ -58,8 +58,10 @@ CREATE TABLE IF NOT EXISTS op.political_entity (
     sigla text NOT NULL UNIQUE,             -- PS, PPD/PSD, PCP-PEV, PPD/PSD.MPT, M.A.
     name text,
     entity_type text NOT NULL CHECK (entity_type IN ('party','coalition','gce','blank','null','other')),
+    color_hex text,
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (color_hex IS NULL OR color_hex ~ '^#[0-9A-Fa-f]{6}$')
 );
 
 CREATE TABLE IF NOT EXISTS op.political_entity_member (

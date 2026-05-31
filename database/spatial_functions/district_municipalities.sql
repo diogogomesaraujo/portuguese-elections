@@ -1,40 +1,59 @@
-CREATE OR REPLACE FUNCTION district_municipalities(district text,
-                                                   stroke   text,
-                                                   strokewidth text,
-                                                   fill text,
-                                                   fillopacity text,
-                                                   precision_value integer)
+CREATE OR REPLACE FUNCTION district_municipalities(
+    district_name text,
+    stroke text,
+    strokewidth text,
+    fill text,
+    fillopacity text,
+    precision_value integer
+)
 RETURNS text AS
 $$
 DECLARE
-svg text;
+    svg text;
 BEGIN
-svg := (WITH municipality_geom AS (
-    SELECT
-        municipio,
-        st_scale(st_transform(st_union(geom), 4326), 10000, 10000)
-        AS geom
-    FROM cont_freguesias
-    WHERE distrito_ilha = district
-    GROUP BY municipio
-),
-municipalities_geoms AS (
-SELECT municipio,
-           st_simplifypreservetopology(st_collectionextract(geom), precision_value)
-           AS geom
-FROM municipality_geom)
-SELECT svgdoc(
-               content=> array_agg(svgshape(geom,
-                                            title => municipio,
-                                            style => svgstyleprop(
-                                                    stroke => stroke,
-                                                    strokewidth => strokewidth,
-                                                    fill => fill,
-                                                    fillopacity =>  fillopacity))),
-               viewbox => svgviewbox(st_collect(geom))
-       )
-FROM municipalities_geoms);
-RETURN svg;
+    WITH municipalities_geom AS (
+        SELECT
+            territory_code,
+            territory_name,
+            ST_SimplifyPreserveTopology(
+                ST_CollectionExtract(
+                    ST_Scale(
+                        ST_Transform(geom, 4326),
+                        10000,
+                        10000
+                    ),
+                    3
+                ),
+                precision_value
+            ) AS geom
+        FROM wh.dim_territory
+        WHERE territory_level = 'municipality'
+          AND parent_name = district_name
+          AND geom IS NOT NULL
+    )
+    SELECT svgdoc(
+        content => array_agg(
+            svgshape(
+                ST_CollectionExtract(geom, 3),
+                title => territory_name,
+                style => svgstyleprop(
+                    stroke => stroke::text,
+                    strokewidth => strokewidth::text,
+                    fill => fill::text,
+                    fillopacity => fillopacity::text
+                )
+            )
+            ORDER BY territory_code
+        ),
+        viewbox => svgviewbox(ST_Collect(geom))
+    )
+    INTO svg
+    FROM municipalities_geom
+    WHERE geom IS NOT NULL
+      AND NOT ST_IsEmpty(geom);
+
+    RETURN svg;
 END;
 $$
-LANGUAGE 'plpgsql' IMMUTABLE;
+LANGUAGE plpgsql
+STABLE;

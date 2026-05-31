@@ -602,7 +602,7 @@ BEGIN
   RETURN CASE WHEN val < min THEN min
     WHEN val > max THEN max
     ELSE val
-  END CASE;
+  END;
 END;
 $$
 LANGUAGE 'plpgsql' IMMUTABLE STRICT;

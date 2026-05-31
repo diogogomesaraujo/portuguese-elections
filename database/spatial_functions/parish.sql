@@ -1,30 +1,60 @@
-CREATE OR REPLACE FUNCTION parish(parish text,
-                                  stroke   text,
-                                  strokewidth text,
-                                  fill text,
-                                  fillopacity text,
-                                  precision_value integer)
+CREATE OR REPLACE FUNCTION parish(
+    parish_name text,
+    stroke text,
+    strokewidth text,
+    fill text,
+    fillopacity text,
+    precision_value integer
+)
 RETURNS text AS
 $$
 DECLARE
-svg text;
+    svg text;
 BEGIN
-svg := (WITH parish_geom AS(SELECT st_scale(st_transform(st_normalize(st_simplifypreservetopology(geom, precision_value)), 4326), 10000, 10000) as geom
-               FROM cont_freguesias
-               WHERE freguesia = parish
-               GROUP BY geom)
-SELECT svgdoc(
-               content=> array_agg(svgshape(geom,
-                                            title => parish,
-                                            style => svgstyleprop(
-                                                    stroke => stroke,
-                                                    strokewidth => strokewidth,
-                                                    fill => fill,
-                                                    fillopacity => fillopacity))),
-               viewbox => svgviewbox(st_collect(geom))
-       )
-FROM parish_geom);
-RETURN svg;
+    WITH parish_geom AS (
+        SELECT
+            territory_code,
+            territory_name,
+            parent_name AS municipality_name,
+            ST_SimplifyPreserveTopology(
+                ST_CollectionExtract(
+                    ST_Scale(
+                        ST_Transform(geom, 4326),
+                        10000,
+                        10000
+                    ),
+                    3
+                ),
+                precision_value
+            ) AS geom
+        FROM wh.dim_territory
+        WHERE territory_level = 'parish'
+          AND territory_name = parish_name
+          AND geom IS NOT NULL
+    )
+    SELECT svgdoc(
+        content => array_agg(
+            svgshape(
+                ST_CollectionExtract(geom, 3),
+                title => territory_name || ' / ' || municipality_name,
+                style => svgstyleprop(
+                    stroke => stroke::text,
+                    strokewidth => strokewidth::text,
+                    fill => fill::text,
+                    fillopacity => fillopacity::text
+                )
+            )
+            ORDER BY territory_code
+        ),
+        viewbox => svgviewbox(ST_Collect(geom))
+    )
+    INTO svg
+    FROM parish_geom
+    WHERE geom IS NOT NULL
+      AND NOT ST_IsEmpty(geom);
+
+    RETURN svg;
 END;
 $$
-LANGUAGE 'plpgsql' IMMUTABLE;
+LANGUAGE plpgsql
+STABLE;
