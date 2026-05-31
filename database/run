@@ -1,9 +1,11 @@
 psql -d elections -v ON_ERROR_STOP=1 -f sql/init/reset.sql
 psql -d elections -v ON_ERROR_STOP=1 -f sql/init/extensions.sql
-psql -d elections -v ON_ERROR_STOP=1 -f sql/schema/operational.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/schemas/operational.sql
 psql -d elections -v ON_ERROR_STOP=1 -f sql/init/populate.sql
-psql -d elections -v ON_ERROR_STOP=1 -f sql/functions_triggers.sql
-psql -d elections -v ON_ERROR_STOP=1 -f sql/schema/warehouse.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init/functions.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init/triggers.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/init/procedures.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/schemas/warehouse.sql
 
 export DATABASE_URL='postgresql://localhost/elections'
 
