@@ -12,14 +12,12 @@ module Map = struct
 
   let not_selected = "Not selected"
 
-  let not_selected_year = 2023
-
   module FieldOptions = struct
     type t =
       { districts:      string list
       ; municipalities: string list
       ; parishes:       string list
-      ; election_years: int    list
+      ; election_years: string list
       ; election_types: string list
       ; offices:        string list }
       [@@deriving sexp, equal]
@@ -28,7 +26,7 @@ module Map = struct
       { districts      = [not_selected]
       ; municipalities = [not_selected]
       ; parishes       = [not_selected]
-      ; election_years = [not_selected_year]
+      ; election_years = [not_selected]
       ; election_types = [not_selected]
       ; offices        = [not_selected] }
 
@@ -51,26 +49,6 @@ module Map = struct
         | _ -> []
         )
       | _ -> []) |> Effect.return
-
-  let all_int ~uri =
-    let%bind.Effect res =
-      Bonsai_web.Effect.of_deferred_fun
-        (fun uri -> Api.get ~uri ()) uri
-    in
-
-    [not_selected_year] @ (match res with
-    | Ok res ->
-      (match Yojson.Safe.from_string res with
-      | `List regions ->
-        List.filter_map
-          regions
-          ~f: (fun json ->
-            match json with
-            | `Int r -> Some r
-            | _ -> None)
-      | _ -> []
-      )
-    | _ -> []) |> Effect.return
 end
 
   module Selected = struct
@@ -78,6 +56,7 @@ end
       { election_type:   string
       ; election_year:   int
       ; office:          string
+
       ; district:        string
       ; municipality:    string
       ; parish:          string
@@ -90,7 +69,7 @@ end
       ; parish        = not_selected
       ; office        = not_selected
       ; election_type = not_selected
-      ; election_year = not_selected_year }
+      ; election_year = not_selected }
 
     let form ~(field_options: FieldOptions.t Value.t) =
       F.Typed.Record.make
@@ -127,7 +106,7 @@ end
                   field_options.election_types)
             | Typed_field.Election_year ->
               F.Elements.Dropdown.list
-                (module Int)
+                (module String)
                 (let%map field_options = field_options in
                   field_options.election_years)
           ;;
@@ -237,12 +216,12 @@ end
     in
 
     let%sub fetch_field_options =
-      let%arr form = form
+      let%arr current_form = form
         and set_field_options = set_field_options
       in
 
       let form_state =
-        match F.value form with
+        match F.value current_form with
         | Ok f -> f
         | _    -> Selected.default
       in
@@ -262,7 +241,7 @@ end
       in
 
       let%bind.Effect election_years =
-        FieldOptions.all_int ~uri: (uri ^ "/election/years/"
+        FieldOptions.all ~uri: (uri ^ "/election/years/"
                             ^ String.lowercase form_state.election_type)
       in
 
@@ -293,11 +272,32 @@ end
       map ~uri ()
     in
 
+    let%sub () = Bonsai.Edge.on_change'
+      (module Selected)
+      (let%map form = form in F.value form |> Or_error.ok_exn)
+      ~callback:
+        (let%map effect = fetch_field_options
+          and form = form
+        in
+          fun prev current ->
+            match prev with
+            | Some prev ->
+              (match String.equal prev.Selected.district current.Selected.district,
+                String.equal prev.municipality current.municipality with
+              | false, _ -> F.set form { current with municipality = not_selected; parish = not_selected }
+              | _, false -> F.set form { current with parish = not_selected }
+              | _ -> Effect.return ())
+            | _ -> Effect.return ()
+         )
+    in
+
     let%sub () = Bonsai.Edge.on_change
       (module Selected)
       (let%map form = form in F.value form |> Or_error.ok_exn)
       ~callback:
-        (let%map effect = fetch_field_options in
+        (let%map effect =
+          fetch_field_options
+        in
           fun _ -> effect)
     in
 
