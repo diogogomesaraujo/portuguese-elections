@@ -1,4 +1,5 @@
 open Backend.Regions
+open Backend.Table
 open Backend.Map
 open Lwt.Syntax
 open Lwt.Infix
@@ -6,94 +7,132 @@ open Lwt.Infix
 module Api = struct
   let headers = [("Access-Control-Allow-Origin", "*")]
 
-  let res = function
-    | Ok (Some res) ->
-      `String res
-      |> Yojson.to_string
-      |> Dream.response ~headers
-      |> Lwt.return
-    | _ -> Yojson.to_string (`List [])
-      |> Dream.response ~headers
-      |> Lwt.return
+  module Response = struct
+    let one = function
+      | Ok (Some res) ->
+        `String res
+        |> Yojson.to_string
+        |> Dream.response ~headers
+        |> Lwt.return
+      | _ -> Yojson.to_string (`List [])
+        |> Dream.response ~headers
+        |> Lwt.return
 
-  let res_list = function
-    | Ok res ->
-      let l =
-        List.map
-          (fun e -> `String e)
-          res
-      in
-      `List l
-      |> Yojson.to_string
-      |> Dream.response ~headers
-      |> Lwt.return
-    | Error e -> Yojson.to_string (`List [])
-      |> Dream.response ~headers
-      |> Lwt.return
+    let list = function
+      | Ok res ->
+        let l =
+          List.map
+            (fun e -> `String e)
+            res
+        in
+        `List l
+        |> Yojson.to_string
+        |> Dream.response ~headers
+        |> Lwt.return
+      | Error e -> Yojson.to_string (`List [])
+        |> Dream.response ~headers
+        |> Lwt.return
+
+    let list_t4 = function
+      | Ok res ->
+        let (l1, l2, l3, l4) =
+          List.fold_left
+            (fun (acc1, acc2, acc3, acc4) (e1, e2, e3, e4) ->
+              ( acc1 @ [`String e1]
+              , acc2 @ [`String e2]
+              , acc3 @ [`String e3]
+              , acc4 @ [`String e4]))
+            ([], [], [], [])
+            res
+        in
+        `List [`List l1; `List l2; `List l3; `List l4]
+        |> Yojson.to_string
+        |> Dream.response ~headers
+        |> Lwt.return
+      | Error e -> Yojson.to_string (`List [])
+        |> Dream.response ~headers
+        |> Lwt.return
+  end
 
   module Regions = struct
-    let regions_req ~name ~arg ~regions =
+    let req ~name ~arg ~regions =
       Dream.get (Printf.sprintf "/%s/:%s" name arg)
         (fun req -> Dream.sql req (fun conn ->
           let module Conn = (val conn : Caqti_lwt.CONNECTION) in
           let param = Dream.param req arg in
           let%lwt result = Conn.collect_list (regions param) () in
-          res_list result)
+          Response.list result)
         )
 
     let districts =
-      regions_req
+      req
         ~name: "districts"
         ~arg:  "arg"
         ~regions: Regions.districts
 
     let municipalities =
-      regions_req
+      req
         ~name: "municipalities"
         ~arg:  "district"
         ~regions: Regions.municipalities
 
     let parishes =
-      regions_req
+      req
         ~name: "parishes"
         ~arg:  "municipality"
         ~regions: Regions.parishes
   end
 
   module Map = struct
-    let map_req ~name ~map ~precision =
+    let req ~name ~map ~precision =
       Dream.get (Printf.sprintf "/%s/:%s" name name)
         (fun req -> Dream.sql req (fun conn ->
             let module Conn = (val conn : Caqti_lwt.CONNECTION) in
             let param = Dream.param req name in
             let%lwt result = Conn.find_opt (map param ~precision) () in
-            res result
+            Response.one result
           )
         )
 
     let country_districts =
-      map_req
+      req
         ~name: "country"
         ~map: Map.country_districts
         ~precision: 5
 
     let district_municipalities =
-      map_req
+      req
         ~name: "district"
         ~map: Map.district_municipalities
         ~precision: 5
 
     let municipality_parishes =
-      map_req
+      req
         ~name: "municipality"
         ~map: Map.municipality_parishes
         ~precision: 5
 
     let parish =
-      map_req
+      req
         ~name: "parish"
         ~map: Map.parish
         ~precision: 5
+  end
+
+  module Table = struct
+    let req_4 ~name ~(table: 'a * ( unit, string * string * string * string, [< `Many | `One | `Zero ] ) Caqti_request.t) =
+      let header, data = table in
+      Dream.get (Printf.sprintf "/%s" name)
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+          let%lwt res = Conn.collect_list data () in
+          Response.list_t4 res)
+        )
+
+    let generic =
+      req_4
+        ~name: "generic"
+        ~table: Table.generic
   end
 
   let run =
@@ -111,6 +150,9 @@ module Api = struct
         Map.district_municipalities;
         Map.municipality_parishes;
         Map.parish;
+      ];
+      Dream.scope "/table" [Dream.memory_sessions] [
+        Table.generic;
       ]
     ]
 end
