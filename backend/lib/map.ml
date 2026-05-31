@@ -1,4 +1,3 @@
-open Pg
 open Caqti_request.Infix
 
 (*
@@ -16,7 +15,7 @@ module Map = struct
       Printf.sprintf
         "SELECT * FROM country(
           '#000000',
-          '100',
+          '50',
           'blue',
           '0.5',
           %d)"
