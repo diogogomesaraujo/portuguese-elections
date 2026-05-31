@@ -203,12 +203,12 @@ end
     in
 
     let%sub fetch_field_options =
-      let%arr form = form
+      let%arr current_form = form
         and set_field_options = set_field_options
       in
 
       let form_state =
-        match F.value form with
+        match F.value current_form with
         | Ok f -> f
         | _    -> Selected.default
       in
@@ -259,12 +259,32 @@ end
       map ~uri ()
     in
 
-    let%sub () = Bonsai.Edge.on_change
+    let%sub () = Bonsai.Edge.on_change'
       (module Selected)
       (let%map form = form in F.value form |> Or_error.ok_exn)
       ~callback:
         (let%map effect = fetch_field_options
-          in
+          and form = form
+        in
+          fun prev current ->
+            match prev with
+            | Some prev ->
+              (match String.equal prev.Selected.district current.Selected.district,
+                String.equal prev.municipality current.municipality with
+              | false, _ -> F.set form { current with municipality = not_selected; parish = not_selected }
+              | _, false -> F.set form { current with parish = not_selected }
+              | _ -> Effect.return ())
+            | _ -> Effect.return ()
+         )
+    in
+
+    let%sub () = Bonsai.Edge.on_change
+      (module Selected)
+      (let%map form = form in F.value form |> Or_error.ok_exn)
+      ~callback:
+        (let%map effect =
+          fetch_field_options
+        in
           fun _ -> effect)
     in
 
