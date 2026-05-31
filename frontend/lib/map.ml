@@ -12,17 +12,25 @@ module Map = struct
 
   let not_selected = "Not selected"
 
-  module Regions = struct
+  let not_selected_year = 2023
+
+  module FieldOptions = struct
     type t =
       { districts:      string list
       ; municipalities: string list
-      ; parishes:       string list }
+      ; parishes:       string list
+      ; election_years: int    list
+      ; election_types: string list
+      ; offices:        string list }
       [@@deriving sexp, equal]
 
     let default =
       { districts      = [not_selected]
       ; municipalities = [not_selected]
-      ; parishes       = [not_selected] }
+      ; parishes       = [not_selected]
+      ; election_years = [not_selected_year]
+      ; election_types = [not_selected]
+      ; offices        = [not_selected] }
 
     let all ~uri =
       let%bind.Effect res =
@@ -43,22 +51,48 @@ module Map = struct
         | _ -> []
         )
       | _ -> []) |> Effect.return
-  end
+
+  let all_int ~uri =
+    let%bind.Effect res =
+      Bonsai_web.Effect.of_deferred_fun
+        (fun uri -> Api.get ~uri ()) uri
+    in
+
+    [not_selected_year] @ (match res with
+    | Ok res ->
+      (match Yojson.Safe.from_string res with
+      | `List regions ->
+        List.filter_map
+          regions
+          ~f: (fun json ->
+            match json with
+            | `Int r -> Some r
+            | _ -> None)
+      | _ -> []
+      )
+    | _ -> []) |> Effect.return
+end
 
   module Selected = struct
     type t =
-      { district:     string
-      ; municipality: string
-      ; parish:       string
+      { office:          string
+      ; election_type:   string
+      ; election_year:   int
+      ; district:        string
+      ; municipality:    string
+      ; parish:          string
       }
       [@@deriving sexp, equal, typed_fields]
 
     let default =
-      { district     = not_selected
-      ; municipality = not_selected
-      ; parish       = not_selected }
+      { district      = not_selected
+      ; municipality  = not_selected
+      ; parish        = not_selected
+      ; office        = not_selected
+      ; election_type = not_selected
+      ; election_year = not_selected_year }
 
-    let form ~(regions: Regions.t Value.t) =
+    let form ~(field_options: FieldOptions.t Value.t) =
       F.Typed.Record.make
         (module struct
           module Typed_field = Typed_field
@@ -69,18 +103,33 @@ module Map = struct
             | Typed_field.District ->
               F.Elements.Dropdown.list
                 (module String)
-                (let%map regions = regions in
-                  regions.districts)
+                (let%map field_options = field_options in
+                  field_options.districts)
             | Typed_field.Municipality ->
               F.Elements.Dropdown.list
                 (module String)
-              (let%map regions = regions in
-                regions.municipalities)
+              (let%map field_options = field_options in
+                field_options.municipalities)
             | Typed_field.Parish ->
               F.Elements.Dropdown.list
                 (module String)
-                (let%map regions = regions in
-                  regions.parishes)
+                (let%map field_options = field_options in
+                  field_options.parishes)
+            | Typed_field.Office ->
+              F.Elements.Dropdown.list
+                (module String)
+                (let%map field_options = field_options in
+                  field_options.offices)
+            | Typed_field.Election_type ->
+              F.Elements.Dropdown.list
+                (module String)
+                (let%map field_options = field_options in
+                  field_options.election_types)
+            | Typed_field.Election_year ->
+              F.Elements.Dropdown.list
+                (module Int)
+                (let%map field_options = field_options in
+                  field_options.election_years)
           ;;
         end)
   end
@@ -151,14 +200,14 @@ module Map = struct
         ~default_model: Country
     in
 
-    let%sub regions_state, set_regions =
+    let%sub field_options_state, set_field_options =
       Bonsai.state
-        (module Regions)
-        ~default_model: Regions.default
+        (module FieldOptions)
+        ~default_model: FieldOptions.default
     in
 
     let%sub form =
-      Selected.form ~regions: regions_state
+      Selected.form ~field_options: field_options_state
     in
 
     let%sub map_type =
@@ -175,9 +224,9 @@ module Map = struct
       | _ -> MapType.Country
     in
 
-    let%sub fetch_regions =
+    let%sub fetch_field_options =
       let%arr form = form
-        and set_regions = set_regions
+        and set_field_options = set_field_options
       in
 
       let form_state =
@@ -187,23 +236,39 @@ module Map = struct
       in
 
       let%bind.Effect parishes =
-        Regions.all ~uri: (uri ^ "/regions/parishes/"
+        FieldOptions.all ~uri: (uri ^ "/regions/parishes/"
                             ^ form_state.municipality)
       in
 
       let%bind.Effect municipalities =
-        Regions.all ~uri: (uri ^ "/regions/municipalities/"
+        FieldOptions.all ~uri: (uri ^ "/regions/municipalities/"
                             ^ form_state.district)
       in
 
       let%bind.Effect districts =
-        Regions.all ~uri: (uri ^ "/regions/districts/_")
+        FieldOptions.all ~uri: (uri ^ "/regions/districts/_")
       in
 
-      set_regions
+      let%bind.Effect election_years =
+        FieldOptions.all_int ~uri: (uri ^ "/election/years/_")
+      in
+
+      let%bind.Effect election_types =
+        FieldOptions.all ~uri: (uri ^ "/election/types/_")
+      in
+
+      let%bind.Effect offices =
+        FieldOptions.all ~uri: (uri ^ "/election/office/"
+                            ^ form_state.election_type)
+      in
+
+      set_field_options
         { districts
         ; municipalities
-        ; parishes }
+        ; parishes
+        ; offices
+        ; election_years
+        ; election_types }
     in
 
     let uri =
@@ -219,7 +284,7 @@ module Map = struct
       (module MapType)
       map_type
       ~callback:
-        (let%map effect = fetch_regions in
+        (let%map effect = fetch_field_options in
           fun _ -> effect)
     in
 
