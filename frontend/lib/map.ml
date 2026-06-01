@@ -125,13 +125,20 @@ end
      [@@deriving sexp, equal]
 
     let uri_of ~uri ~election_type ~election_year ~office ~t =
-      (match t with
-      | Country        -> uri ^ "/map/country/_"
-      | District d     -> uri ^ "/map/district/" ^ d
-      | Municipality m -> uri ^ "/map/municipality/" ^ m
-      | Parish p       -> uri ^ "/map/parish/" ^ p)
-        ^ Printf.sprintf "/%s/%s/%s" election_type election_year office
+      let base =
+        match t with
+        | Country -> uri ^ "/map/country/_"
+        | District d -> uri ^ "/map/district/" ^ d
+        | Municipality m -> uri ^ "/map/municipality/" ^ m
+        | Parish p -> uri ^ "/map/parish/" ^ p
+      in
 
+      Printf.sprintf
+        "%s/%s/%s/%s"
+        base
+        election_type
+        election_year
+        office
   end
 
   let get ~uri ?arguments () =

@@ -61,7 +61,6 @@ SELECT
     sigla,
     name,
     entity_type,
-    color_hex,
     COALESCE(
         color_hex,
         CASE
@@ -213,7 +212,6 @@ BEGIN
         sigla,
         name,
         entity_type,
-        color_hex,
         COALESCE(
             color_hex,
             CASE

@@ -1,24 +1,22 @@
 open Caqti_request.Infix
 
-(*
-  Caqti infix operators
-
-  ->! decodes a single row
-  ->? decodes zero or one row
-  ->* decodes many rows
-  ->. expects no row
-*)
-
 module Map = struct
   let country_districts _ ~precision ~election_type ~election_year ~office =
     let query =
       Printf.sprintf
         "SELECT * FROM country(
+          '%s',
+          %s,
+          '%s',
+          NULL,
           '#000000',
-          '8',
+          '500',
           '#cccccc',
           '0.85',
           %d)"
+        election_type
+        election_year
+        office
         precision
     in
     Caqti_type.(unit ->? string) query
@@ -28,11 +26,18 @@ module Map = struct
       Printf.sprintf
         "SELECT * FROM district_municipalities(
           '%s',
+          %s,
+          '%s',
+          '%s',
+          NULL,
           '#000000',
-          '4',
+          '50',
           '#cccccc',
           '0.85',
           %d)"
+        election_type
+        election_year
+        office
         district
         precision
     in
@@ -43,11 +48,18 @@ module Map = struct
       Printf.sprintf
         "SELECT * FROM municipality_parishes(
           '%s',
+          %s,
+          '%s',
+          '%s',
+          NULL,
           '#000000',
-          '1.5',
+          '10',
           '#cccccc',
           '0.85',
           %d)"
+        election_type
+        election_year
+        office
         municipality
         precision
     in
