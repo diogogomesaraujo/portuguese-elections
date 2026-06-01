@@ -1,14 +1,13 @@
-DROP FUNCTION IF EXISTS wh.result_for_territory(
-    text, integer, text, text, text, text
+DROP FUNCTION IF EXISTS wh.results_for_territory_parties(
+    text, integer, text, text, text
 );
 
-CREATE OR REPLACE FUNCTION wh.result_for_territory(
+CREATE OR REPLACE FUNCTION wh.results_for_territory_parties(
     p_election_type text,
     p_election_year integer,
     p_office text,
     p_territory_code text,
-    p_territory_level text,
-    p_party_sigla text DEFAULT NULL
+    p_territory_level text
 )
 RETURNS TABLE (
     sigla text,
@@ -16,9 +15,7 @@ RETURNS TABLE (
     color text,
     votes bigint,
     vote_pct numeric,
-    seats integer,
-    seat_pct numeric,
-    is_winner boolean
+    seats integer
 )
 LANGUAGE sql
 STABLE
@@ -59,10 +56,6 @@ target AS (
 ),
 
 vote_territories AS (
-    /*
-      Legislative / AR:
-      vote territory is district.
-    */
     SELECT vt.territory_key
     FROM selected s
     JOIN target tg ON true
@@ -86,14 +79,6 @@ vote_territories AS (
 
     UNION ALL
 
-    /*
-      CM / AM:
-      vote territory is municipality.
-
-      If drawing a district, aggregate all municipalities inside it.
-      If drawing a municipality, use itself.
-      If drawing a parish, use parent municipality.
-    */
     SELECT vt.territory_key
     FROM selected s
     JOIN target tg ON true
@@ -119,14 +104,6 @@ vote_territories AS (
 
     UNION ALL
 
-    /*
-      AF:
-      vote territory is parish.
-
-      If drawing a district, aggregate all parishes inside all its municipalities.
-      If drawing a municipality, aggregate all parishes inside it.
-      If drawing a parish, use itself.
-    */
     SELECT vt.territory_key
     FROM selected s
     JOIN target tg ON true
@@ -141,13 +118,11 @@ vote_territories AS (
             tg.territory_level = 'district'
             AND parent_municipality.parent_code = tg.territory_code
         )
-        OR
-        (
+        OR (
             tg.territory_level = 'municipality'
             AND vt.parent_code = tg.territory_code
         )
-        OR
-        (
+        OR (
             tg.territory_level = 'parish'
             AND vt.territory_code = tg.territory_code
         )
@@ -155,11 +130,6 @@ vote_territories AS (
 
     UNION ALL
 
-    /*
-      PR / PE:
-      vote territory is country.
-      This will color every drawn child with the national winner/result.
-    */
     SELECT vt.territory_key
     FROM selected s
     JOIN wh.dim_territory vt
@@ -188,18 +158,17 @@ party_totals AS (
      AND fsr.office_key = fvr.office_key
      AND fsr.territory_key = fvr.territory_key
      AND fsr.political_entity_key = fvr.political_entity_key
-    GROUP BY pe.sigla, pe.name, pe.color
+    GROUP BY
+        pe.sigla,
+        pe.name,
+        pe.color
 ),
 
 ranked AS (
     SELECT
-        *,
-        SUM(votes) OVER () AS total_votes,
-        SUM(seats) OVER () AS total_seats,
-        row_number() OVER (
-            ORDER BY votes DESC, sigla
-        ) AS rn
-    FROM party_totals
+        pt.*,
+        SUM(pt.votes) OVER () AS total_votes
+    FROM party_totals pt
 )
 
 SELECT
@@ -210,23 +179,26 @@ SELECT
     CASE
         WHEN ranked.total_votes > 0
         THEN round((ranked.votes::numeric / ranked.total_votes::numeric) * 100, 2)
+        ELSE 0
     END AS vote_pct,
-    ranked.seats,
-    CASE
-        WHEN ranked.total_seats > 0
-        THEN round((ranked.seats::numeric / ranked.total_seats::numeric) * 100, 2)
-    END AS seat_pct,
-    ranked.rn = 1 AS is_winner
+    ranked.seats
 FROM ranked
-WHERE
-    (
-        p_party_sigla IS NULL
-        AND ranked.rn = 1
-    )
-    OR
-    (
-        p_party_sigla IS NOT NULL
-        AND lower(ranked.sigla) = lower(p_party_sigla)
-    )
-LIMIT 1;
+ORDER BY
+    ranked.votes DESC,
+    ranked.seats DESC,
+    ranked.sigla ASC;
 $$;
+
+
+/*
+
+SELECT *
+FROM wh.results_for_territory_parties(
+    'AUTARQUICAS',
+    2021,
+    'CM',
+    '0303',
+    'municipality'
+);
+
+*/
