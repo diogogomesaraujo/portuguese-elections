@@ -3,6 +3,7 @@ CREATE SCHEMA IF NOT EXISTS wh;
 DROP TABLE IF EXISTS wh.fact_seat_result CASCADE;
 DROP TABLE IF EXISTS wh.fact_vote_result CASCADE;
 DROP TABLE IF EXISTS wh.fact_turnout CASCADE;
+DROP TABLE IF EXISTS wh.bridge_political_entity_member CASCADE;
 DROP TABLE IF EXISTS wh.dim_political_entity CASCADE;
 DROP TABLE IF EXISTS wh.dim_territory CASCADE;
 DROP TABLE IF EXISTS wh.dim_office CASCADE;
@@ -17,9 +18,11 @@ SELECT
     e.election_year,
     e.election_date
 FROM op.election e
-JOIN op.election_type et ON et.election_type_id = e.election_type_id;
+JOIN op.election_type et
+  ON et.election_type_id = e.election_type_id;
 
-ALTER TABLE wh.dim_election ADD PRIMARY KEY (election_key);
+ALTER TABLE wh.dim_election
+ADD PRIMARY KEY (election_key);
 
 CREATE TABLE wh.dim_office AS
 SELECT
@@ -29,7 +32,8 @@ SELECT
     scope_level
 FROM op.office;
 
-ALTER TABLE wh.dim_office ADD PRIMARY KEY (office_key);
+ALTER TABLE wh.dim_office
+ADD PRIMARY KEY (office_key);
 
 CREATE TABLE wh.dim_territory AS
 SELECT
@@ -41,16 +45,22 @@ SELECT
     p.name AS parent_name,
     t.geom
 FROM op.territory t
-JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
-LEFT JOIN op.territory p ON p.territory_id = t.parent_id;
+JOIN op.territory_level tl
+  ON tl.territory_level_id = t.level_id
+LEFT JOIN op.territory p
+  ON p.territory_id = t.parent_id;
 
-ALTER TABLE wh.dim_territory ADD PRIMARY KEY (territory_key);
+ALTER TABLE wh.dim_territory
+ADD PRIMARY KEY (territory_key);
 
 CREATE INDEX IF NOT EXISTS wh_dim_territory_code_idx
 ON wh.dim_territory(territory_code);
 
 CREATE INDEX IF NOT EXISTS wh_dim_territory_level_idx
 ON wh.dim_territory(territory_level);
+
+CREATE INDEX IF NOT EXISTS wh_dim_territory_parent_code_idx
+ON wh.dim_territory(parent_code);
 
 CREATE INDEX IF NOT EXISTS wh_dim_territory_geom_gix
 ON wh.dim_territory USING gist(geom);
@@ -73,7 +83,112 @@ SELECT
     ) AS color
 FROM op.political_entity;
 
-ALTER TABLE wh.dim_political_entity ADD PRIMARY KEY (political_entity_key);
+ALTER TABLE wh.dim_political_entity
+ADD PRIMARY KEY (political_entity_key);
+
+CREATE INDEX IF NOT EXISTS wh_dim_political_entity_sigla_idx
+ON wh.dim_political_entity(sigla);
+
+CREATE INDEX IF NOT EXISTS wh_dim_political_entity_entity_type_idx
+ON wh.dim_political_entity(entity_type);
+
+CREATE TABLE wh.bridge_political_entity_member (
+    political_entity_key bigint NOT NULL,
+    member_political_entity_key bigint NOT NULL,
+
+    PRIMARY KEY (
+        political_entity_key,
+        member_political_entity_key
+    ),
+
+    FOREIGN KEY (political_entity_key)
+        REFERENCES wh.dim_political_entity(political_entity_key)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (member_political_entity_key)
+        REFERENCES wh.dim_political_entity(political_entity_key)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS wh_bridge_political_entity_member_member_idx
+ON wh.bridge_political_entity_member(member_political_entity_key);
+
+CREATE INDEX IF NOT EXISTS wh_bridge_political_entity_member_entity_idx
+ON wh.bridge_political_entity_member(political_entity_key);
+
+/*
+  Self-membership.
+
+  This makes every entity belong to itself:
+    PS                    -> PS
+    PPD/PSD               -> PPD/PSD
+    PPD/PSD.CDS-PP.PPM    -> PPD/PSD.CDS-PP.PPM
+
+  This is useful because party-over-years can treat direct and coalition
+  results consistently.
+*/
+INSERT INTO wh.bridge_political_entity_member (
+    political_entity_key,
+    member_political_entity_key
+)
+SELECT
+    pe.political_entity_key,
+    pe.political_entity_key
+FROM wh.dim_political_entity pe
+ON CONFLICT DO NOTHING;
+
+/*
+  PSD/CDS/PPM coalitions.
+
+  These are the real coalition siglas currently appearing in your results:
+    PPD/PSD.CDS-PP.PPM
+    PPD/PSD.CDS-PP.PPM.A
+*/
+INSERT INTO wh.bridge_political_entity_member (
+    political_entity_key,
+    member_political_entity_key
+)
+SELECT
+    coalition.political_entity_key,
+    member.political_entity_key
+FROM wh.dim_political_entity coalition
+JOIN wh.dim_political_entity member
+  ON member.sigla IN ('PPD/PSD', 'CDS-PP', 'PPM')
+WHERE coalition.sigla IN (
+    'AD',
+    'PPD/PSD.CDS-PP',
+    'PPD/PSD-CDS/PP',
+    'PSD/CDS',
+    'PSD-CDS',
+    'PSD.CDS',
+    'PPD/PSD.CDS-PP.PPM',
+    'PPD/PSD.CDS-PP.PPM.A'
+)
+ON CONFLICT DO NOTHING;
+
+/*
+  PS/PAN coalition.
+*/
+INSERT INTO wh.bridge_political_entity_member (
+    political_entity_key,
+    member_political_entity_key
+)
+SELECT
+    coalition.political_entity_key,
+    member.political_entity_key
+FROM wh.dim_political_entity coalition
+JOIN wh.dim_political_entity member
+  ON member.sigla IN ('PS', 'PAN')
+WHERE coalition.sigla = 'PS.PAN'
+ON CONFLICT DO NOTHING;
+
+/*
+  PCP-PEV is intentionally not expanded here.
+
+  Your current dim_political_entity does not contain separate PCP and PEV
+  rows. It only contains PCP-PEV as one coalition entity. So self-membership
+  is enough for now.
+*/
 
 CREATE TABLE wh.fact_turnout AS
 SELECT
@@ -117,7 +232,8 @@ SELECT
         ORDER BY vr.votes DESC
     ) AS result_rank
 FROM op.vote_result vr
-JOIN op.candidacy c ON c.candidacy_id = vr.candidacy_id
+JOIN op.candidacy c
+  ON c.candidacy_id = vr.candidacy_id
 LEFT JOIN op.result_summary rs
   ON rs.election_id = vr.election_id
  AND rs.office_id = vr.office_id
@@ -146,7 +262,8 @@ SELECT
     END AS seat_share,
     sr.method
 FROM op.seat_result sr
-JOIN op.candidacy c ON c.candidacy_id = sr.candidacy_id
+JOIN op.candidacy c
+  ON c.candidacy_id = sr.candidacy_id
 LEFT JOIN op.seat_count sc
   ON sc.election_id = sr.election_id
  AND sc.office_id = sr.office_id
@@ -169,6 +286,7 @@ BEGIN
         wh.fact_seat_result,
         wh.fact_vote_result,
         wh.fact_turnout,
+        wh.bridge_political_entity_member,
         wh.dim_political_entity,
         wh.dim_territory,
         wh.dim_office,
@@ -183,7 +301,8 @@ BEGIN
         e.election_year,
         e.election_date
     FROM op.election e
-    JOIN op.election_type et ON et.election_type_id = e.election_type_id;
+    JOIN op.election_type et
+      ON et.election_type_id = e.election_type_id;
 
     INSERT INTO wh.dim_office
     SELECT
@@ -203,8 +322,10 @@ BEGIN
         p.name,
         t.geom
     FROM op.territory t
-    JOIN op.territory_level tl ON tl.territory_level_id = t.level_id
-    LEFT JOIN op.territory p ON p.territory_id = t.parent_id;
+    JOIN op.territory_level tl
+      ON tl.territory_level_id = t.level_id
+    LEFT JOIN op.territory p
+      ON p.territory_id = t.parent_id;
 
     INSERT INTO wh.dim_political_entity
     SELECT
@@ -223,6 +344,51 @@ BEGIN
             END
         ) AS color
     FROM op.political_entity;
+
+    INSERT INTO wh.bridge_political_entity_member (
+        political_entity_key,
+        member_political_entity_key
+    )
+    SELECT
+        pe.political_entity_key,
+        pe.political_entity_key
+    FROM wh.dim_political_entity pe
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO wh.bridge_political_entity_member (
+        political_entity_key,
+        member_political_entity_key
+    )
+    SELECT
+        coalition.political_entity_key,
+        member.political_entity_key
+    FROM wh.dim_political_entity coalition
+    JOIN wh.dim_political_entity member
+      ON member.sigla IN ('PPD/PSD', 'CDS-PP', 'PPM')
+    WHERE coalition.sigla IN (
+        'AD',
+        'PPD/PSD.CDS-PP',
+        'PPD/PSD-CDS/PP',
+        'PSD/CDS',
+        'PSD-CDS',
+        'PSD.CDS',
+        'PPD/PSD.CDS-PP.PPM',
+        'PPD/PSD.CDS-PP.PPM.A'
+    )
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO wh.bridge_political_entity_member (
+        political_entity_key,
+        member_political_entity_key
+    )
+    SELECT
+        coalition.political_entity_key,
+        member.political_entity_key
+    FROM wh.dim_political_entity coalition
+    JOIN wh.dim_political_entity member
+      ON member.sigla IN ('PS', 'PAN')
+    WHERE coalition.sigla = 'PS.PAN'
+    ON CONFLICT DO NOTHING;
 
     INSERT INTO wh.fact_turnout
     SELECT
@@ -260,7 +426,8 @@ BEGIN
             ORDER BY vr.votes DESC
         ) AS result_rank
     FROM op.vote_result vr
-    JOIN op.candidacy c ON c.candidacy_id = vr.candidacy_id
+    JOIN op.candidacy c
+      ON c.candidacy_id = vr.candidacy_id
     LEFT JOIN op.result_summary rs
       ON rs.election_id = vr.election_id
      AND rs.office_id = vr.office_id
@@ -280,7 +447,8 @@ BEGIN
         END AS seat_share,
         sr.method
     FROM op.seat_result sr
-    JOIN op.candidacy c ON c.candidacy_id = sr.candidacy_id
+    JOIN op.candidacy c
+      ON c.candidacy_id = sr.candidacy_id
     LEFT JOIN op.seat_count sc
       ON sc.election_id = sr.election_id
      AND sc.office_id = sr.office_id
