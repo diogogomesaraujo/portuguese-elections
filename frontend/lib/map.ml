@@ -319,8 +319,6 @@ end
 
     Vdom.Node.div
       [ F.view_as_vdom form
-      ; Vdom.Node.sexp_for_debugging
-        ([%sexp_of: Selected.t Or_error.t] (F.value form))
       ;  Vdom.Node.button
         ~attrs: [Vdom.Attr.on_click (fun _ ->
                                       set_map map_type)]

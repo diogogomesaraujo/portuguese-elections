@@ -1,4 +1,4 @@
 (library
  (name backend)
- (libraries  plplot caqti-driver-postgresql dream)
+ (libraries  plplot caqti-driver-postgresql dream cohttp cohttp-lwt-unix)
  (preprocess (pps ppx_deriving.show lwt_ppx)))
