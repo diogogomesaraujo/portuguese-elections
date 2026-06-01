@@ -9,11 +9,8 @@ open Caqti_request.Infix
   ->. expects no row
 *)
 
-let sql_escape s =
-  String.concat "''" (String.split_on_char '\'' s)
-
 module Map = struct
-  let country_districts _ ~precision =
+  let country_districts _ ~precision ~election_type ~election_year ~office =
     let query =
       Printf.sprintf
         "SELECT * FROM country(
@@ -26,8 +23,7 @@ module Map = struct
     in
     Caqti_type.(unit ->? string) query
 
-  let district_municipalities district ~precision =
-    let district = sql_escape district in
+  let district_municipalities district ~precision ~election_type ~election_year ~office =
     let query =
       Printf.sprintf
         "SELECT * FROM district_municipalities(
@@ -42,8 +38,7 @@ module Map = struct
     in
     Caqti_type.(unit ->? string) query
 
-  let municipality_parishes municipality ~precision =
-    let municipality = sql_escape municipality in
+  let municipality_parishes municipality ~precision ~election_type ~election_year ~office =
     let query =
       Printf.sprintf
         "SELECT * FROM municipality_parishes(
@@ -58,15 +53,12 @@ module Map = struct
     in
     Caqti_type.(unit ->? string) query
 
-  let parish parish_name ~precision ~election_type ~election_year ~office =
-    let parish_name = sql_escape parish_name in
-    let election_type = sql_escape election_type in
-    let office = sql_escape office in
+  let parish parish ~precision ~election_type ~election_year ~office =
     let query =
       Printf.sprintf
         "SELECT * FROM parish(
           '%s',
-          %d,
+          %s,
           '%s',
           '%s',
           '#000000',
@@ -77,7 +69,7 @@ module Map = struct
         election_type
         election_year
         office
-        parish_name
+        parish
         precision
     in
     Caqti_type.(unit ->? string) query

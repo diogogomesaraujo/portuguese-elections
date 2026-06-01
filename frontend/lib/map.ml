@@ -54,7 +54,7 @@ end
   module Selected = struct
     type t =
       { election_type:   string
-      ; election_year:   int
+      ; election_year:   string
       ; office:          string
 
       ; district:        string
@@ -76,7 +76,10 @@ end
         (module struct
           module Typed_field = Typed_field
 
-          let label_for_field = `Inferred
+          let label_for_field = `Computed (fun field ->
+            Typed_field.name field
+            |> String.capitalize
+            |> String.substr_replace_all ~pattern:"_" ~with_:" ")
 
           let form_for_field : type a. a Typed_field.t -> a F.t Computation.t = function
             | Typed_field.District ->
@@ -118,21 +121,16 @@ end
      | Country
      | District of string
      | Municipality of string
-     | Parish of string * string * int * string
+     | Parish of string
      [@@deriving sexp, equal]
 
-    let uri_of ~uri = function
+    let uri_of ~uri ~election_type ~election_year ~office ~t =
+      (match t with
       | Country        -> uri ^ "/map/country/_"
       | District d     -> uri ^ "/map/district/" ^ d
       | Municipality m -> uri ^ "/map/municipality/" ^ m
-      | Parish (p, election_type, election_year, office) ->
-        Printf.sprintf
-          "%s/map/parish/%s?type=%s&year=%d&office=%s"
-          uri
-          p
-          election_type
-          election_year
-          office
+      | Parish p       -> uri ^ "/map/parish/" ^ p)
+        ^ Printf.sprintf "/%s/%s/%s" election_type election_year office
 
   end
 
@@ -203,11 +201,7 @@ end
 
       match F.value form with
       | Ok f when not (String.equal f.parish not_selected) ->
-        MapType.Parish
-          ( f.parish
-          , f.election_type
-          , f.election_year
-          , f.office )
+        MapType.Parish f.parish
       | Ok f when not (String.equal f.municipality not_selected) ->
         MapType.Municipality f.municipality
       | Ok f when not (String.equal f.district not_selected) ->
@@ -264,8 +258,16 @@ end
     in
 
     let uri =
-      let%map map_state = map_state in
-      MapType.uri_of ~uri map_state
+      let%map map_state = map_state
+      and form = form in
+      let f = F.value_or_default form ~default: Selected.default in
+
+      MapType.uri_of
+        ~uri
+        ~election_type: f.election_type
+        ~election_year: f.election_year
+        ~office:        f.office
+        ~t:             map_state
     in
 
     let%sub map =
@@ -284,8 +286,10 @@ end
             | Some prev ->
               (match String.equal prev.Selected.district current.Selected.district,
                 String.equal prev.municipality current.municipality with
-              | false, _ -> F.set form { current with municipality = not_selected; parish = not_selected }
-              | _, false -> F.set form { current with parish = not_selected }
+              | false, _ -> F.set form
+                { current with municipality = not_selected; parish = not_selected }
+              | _, false -> F.set form
+                { current with parish = not_selected }
               | _ -> Effect.return ())
             | _ -> Effect.return ()
          )

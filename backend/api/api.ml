@@ -1,11 +1,13 @@
 open Backend.Elections
 open Backend.Regions
 open Backend.Table
+open Backend.Map
 open Lwt.Syntax
 open Lwt.Infix
 
 module Api = struct
-  let headers = [("Access-Control-Allow-Origin", "*")]
+  let headers = [("Access-Control-Allow-Origin", "*");
+    ("Content-Type", "application/json; charset=utf-8")]
 
   module Response = struct
     let one = function
@@ -97,12 +99,11 @@ module Api = struct
         )
 
     let types =
-      Dream.get "/types/:arg"
-        (fun req -> Dream.sql req (fun conn ->
-          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
-          let%lwt result = Conn.collect_list Elections.election_types () in
-          Response.list result)
-        )
+      req
+        ~name: "types"
+        ~arg:  "arg"
+        ~regions: Elections.election_types
+        ~list: Response.list
 
     let years =
       req
@@ -121,66 +122,46 @@ module Api = struct
 
   module Map = struct
     let req ~name ~map ~precision =
-      Dream.get (Printf.sprintf "/%s/:%s" name name)
+      Dream.get (Printf.sprintf "/%s/:%s/:type/:year/:office" name name)
         (fun req -> Dream.sql req (fun conn ->
-            let module Conn = (val conn : Caqti_lwt.CONNECTION) in
-            let param = Dream.param req name in
-            let%lwt result = Conn.find_opt (map param ~precision) () in
-            Response.one result
-          )
-        )
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+
+          let name          = Dream.param req name     |> Uri.pct_decode in
+          let election_type = Dream.param req "type"   |> Uri.pct_decode in
+          let election_year = Dream.param req "year"   |> Uri.pct_decode in
+          let office        = Dream.param req "office" |> Uri.pct_decode in
+
+          let%lwt result = Conn.find_opt (map
+                                            name
+                                            ~precision
+                                            ~election_type
+                                            ~election_year
+                                            ~office) ()
+          in Response.one result))
 
     let country_districts =
       req
         ~name: "country"
-        ~map: Backend.Map.Map.country_districts
-        ~precision: 5
+        ~map: Map.country_districts
+        ~precision: 50
 
     let district_municipalities =
       req
         ~name: "district"
-        ~map: Backend.Map.Map.district_municipalities
+        ~map: Map.district_municipalities
         ~precision: 5
 
     let municipality_parishes =
       req
         ~name: "municipality"
-        ~map: Backend.Map.Map.municipality_parishes
+        ~map: Map.municipality_parishes
         ~precision: 5
 
     let parish =
-      Dream.get "/parish/:parish"
-        (fun req -> Dream.sql req (fun conn ->
-          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
-
-          let parish_name = Dream.param req "parish" in
-          let election_type =
-            Dream.query req "type"
-            |> Option.value ~default:"autarquicas"
-          in
-          let election_year =
-            Dream.query req "year"
-            |> Option.value ~default:"2025"
-            |> int_of_string
-          in
-          let office =
-            Dream.query req "office"
-            |> Option.value ~default:"assembleia de freguesia"
-          in
-
-          let%lwt result =
-            Conn.find_opt
-              (Backend.Map.Map.parish
-                 parish_name
-                 ~precision:5
-                 ~election_type
-                 ~election_year
-                 ~office)
-              ()
-          in
-
-          Response.one result
-        ))
+      req
+        ~name: "parish"
+        ~map: Map.parish
+        ~precision: 1
   end
 
   module Table = struct

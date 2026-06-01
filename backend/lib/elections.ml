@@ -1,7 +1,7 @@
 open Caqti_request.Infix
 
 module Elections = struct
-  let election_types =
+  let election_types _ =
     let query =
       "
       SELECT DISTINCT lower(election_type)
