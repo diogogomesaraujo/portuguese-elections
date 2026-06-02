@@ -1,54 +1,87 @@
-import plotly.express as px
+from urllib.parse import unquote
+
 import plotly.graph_objects as go
 import psycopg2
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, HTTPException, Response
 
 conn = psycopg2.connect(database="elections", port="5432")
 
 app = FastAPI()
 
 
-@app.get(
-    "/treemap/{election_type}/{election_year}/{office}/{territory_code}/{territory_level}"
-)
+@app.get("/treemap/{election_type}/{election_year}/{office}/{territory_code}")
 def treemap_req(
     election_type: str,
     election_year: int,
     office: str,
     territory_code: str,
-    territory_level: str,
 ):
+    election_type = unquote(election_type)
+    office = unquote(office)
+    territory_code = unquote(territory_code)
 
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT sigla, votes
-        FROM wh.results_for_territory_parties(
-            %s, %s, %s, %s, %s
-        );
-        """,
-        (election_type, election_year, office, territory_code, territory_level),
-    )
+    try:
+        cursor.execute(
+            """
+            SELECT office_name
+            FROM wh.dim_office
+            WHERE lower(office_code) = lower(%s)
+               OR lower(office_name) = lower(%s)
+            LIMIT 1
+            """,
+            (office, office),
+        )
 
-    rows = cursor.fetchall()
-    cursor.close()
+        row = cursor.fetchone()
 
-    labels = [r[0] for r in rows]
-    values = [r[1] for r in rows]
+        if row:
+            office = row[0]
 
-    svg = treemap_svg(labels, values)
+        cursor.execute(
+            """
+            SELECT sigla, votes
+            FROM wh.results_for_territory_parties(
+                %s, %s, %s, %s
+            );
+            """,
+            (
+                election_type,
+                election_year,
+                office,
+                territory_code,
+            ),
+        )
 
-    return Response(content=svg, media_type="image/svg+xml")
+        rows = cursor.fetchall()
+
+        if not rows:
+            raise HTTPException(
+                status_code=404, detail="No data found for given parameters"
+            )
+
+        labels = [r[0] for r in rows]
+        values = [r[1] for r in rows]
+
+        svg = treemap_svg(labels, values)
+
+        return Response(content=svg, media_type="image/svg+xml")
+
+    finally:
+        cursor.close()
 
 
 def treemap_svg(labels, values):
     fig = go.Figure(
-        go.Treemap(labels=labels, parents=[""] * len(labels), values=values)
+        go.Treemap(
+            labels=labels,
+            parents=[""] * len(labels),
+            values=values,
+        )
     )
 
-    svg_text = fig.to_image(format="svg").decode("utf-8")
-    return svg_text
+    return fig.to_image(format="svg").decode("utf-8")
 
 
 @app.get(

@@ -1,6 +1,8 @@
+open Backend.Territory
 open Backend.Elections
 open Backend.Regions
 open Backend.Table
+open Backend.Req
 open Backend.Map
 open Lwt.Syntax
 open Lwt.Infix
@@ -8,6 +10,8 @@ open Lwt.Infix
 module Api = struct
   let headers = [("Access-Control-Allow-Origin", "*");
     ("Content-Type", "application/json; charset=utf-8")]
+
+  let microservice_uri = "http://localhost:8000"
 
   module Response = struct
     let one = function
@@ -17,6 +21,16 @@ module Api = struct
         |> Dream.response ~headers
         |> Lwt.return
       | _ -> Yojson.to_string (`List [])
+        |> Dream.response ~headers
+        |> Lwt.return
+
+    let two = function
+      | Ok(r1, r2) ->
+        `Tuple [`String r1; `Int r2]
+        |> Yojson.to_string
+        |> Dream.response ~headers
+        |> Lwt.return
+      | _ -> Yojson.to_string (`Tuple [])
         |> Dream.response ~headers
         |> Lwt.return
 
@@ -121,47 +135,23 @@ module Api = struct
   end
 
   module Map = struct
-    let req ~name ~map ~precision =
-      Dream.get (Printf.sprintf "/%s/:%s/:type/:year/:office" name name)
+    let get =
+      Dream.get "/:code/:type/:year/:office"
         (fun req -> Dream.sql req (fun conn ->
           let module Conn = (val conn : Caqti_lwt.CONNECTION) in
 
-          let name          = Dream.param req name     |> Uri.pct_decode in
+          let code          = Dream.param req "code"   |> Uri.pct_decode in
           let election_type = Dream.param req "type"   |> Uri.pct_decode in
           let election_year = Dream.param req "year"   |> Uri.pct_decode in
           let office        = Dream.param req "office" |> Uri.pct_decode in
 
-          let%lwt result = Conn.find_opt (map
-                                            name
-                                            ~precision
+          let%lwt result = Conn.find_opt (Map.get
+                                            ~code
+                                            ~precision: 1
                                             ~election_type
                                             ~election_year
                                             ~office) ()
           in Response.one result))
-
-    let country_districts =
-      req
-        ~name: "country"
-        ~map: Map.country_districts
-        ~precision: 50
-
-    let district_municipalities =
-      req
-        ~name: "district"
-        ~map: Map.district_municipalities
-        ~precision: 5
-
-    let municipality_parishes =
-      req
-        ~name: "municipality"
-        ~map: Map.municipality_parishes
-        ~precision: 5
-
-    let parish =
-      req
-        ~name: "parish"
-        ~map: Map.parish
-        ~precision: 1
   end
 
   module Table = struct
@@ -180,6 +170,54 @@ module Api = struct
         ~table: Table.generic
   end
 
+  module Plot = struct
+    let req ~name ~microservice_uri =
+      Dream.get (Printf.sprintf "/%s/:type/:year/:office/:t_code" name)
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+
+          let election_type = Dream.param req "type"    |> Uri.pct_decode in
+          let election_year = Dream.param req "year"    |> Uri.pct_decode in
+          let office        = Dream.param req "office"  |> Uri.pct_decode in
+          let t_code        = Dream.param req "t_code"  |> Uri.pct_decode in
+
+          let uri =
+            Printf.sprintf "%s/%s/%s/%s/%s/%s"
+              microservice_uri name
+              (Req.to_param (election_type, false))
+              (Req.to_param (election_year, false))
+              (Req.to_param (office, false))
+              (Req.to_param (t_code, false))
+          in
+
+          let%lwt res = Req.get ~uri in
+
+          `String res
+          |> Yojson.to_string
+          |> Dream.response ~headers
+          |> Lwt.return
+          ))
+
+    let treemap =
+      req
+        ~name: "treemap"
+        ~microservice_uri
+  end
+
+  module Territory = struct
+    let get =
+      Dream.get "/:district/:municipality/:parish"
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+
+          let district     = Dream.param req "district"     |> Uri.pct_decode in
+          let municipality = Dream.param req "municipality" |> Uri.pct_decode in
+          let parish       = Dream.param req "parish"       |> Uri.pct_decode in
+
+          let%lwt res = Conn.find_opt (Territory.code ~district ~municipality ~parish) () in
+          res |> Response.one))
+  end
+
   let run =
     Dream.run
     @@ Dream.logger
@@ -196,13 +234,16 @@ module Api = struct
         Elections.years;
       ];
       Dream.scope "/map" [Dream.memory_sessions] [
-        Map.country_districts;
-        Map.district_municipalities;
-        Map.municipality_parishes;
-        Map.parish;
+        Map.get;
       ];
       Dream.scope "/table" [Dream.memory_sessions] [
         Table.generic;
+      ];
+      Dream.scope "/plot" [Dream.memory_sessions] [
+        Plot.treemap;
+      ];
+      Dream.scope "/territory" [Dream.memory_sessions] [
+        Territory.get;
       ]
     ]
 end

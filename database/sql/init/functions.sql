@@ -11,7 +11,9 @@
 \ir ../functions/analytics/party_results.sql
 \ir ../functions/analytics/results_for_territory_parties.sql
 \ir ../functions/analytics/result_for_territory.sql
-\ir ../functions/analytics/match_territory.sql
+\ir ../functions/analytics/resolve_match_territory.sql
+\ir ../functions/analytics/top_party_growth.sql
+
 
 \ir ../functions/spatial/country.sql
 \ir ../functions/spatial/district_municipalities.sql
