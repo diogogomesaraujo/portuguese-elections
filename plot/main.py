@@ -1,9 +1,13 @@
-from fastapi import FastAPI, Response
-import psycopg2
-import plotly.graph_objects as go
 from urllib.parse import unquote
 
-conn = psycopg2.connect(database="elections", port="5432")
+from fastapi import FastAPI, Response, HTTPException
+import psycopg2
+import plotly.graph_objects as go
+
+conn = psycopg2.connect(
+    database="elections",
+    port="5432"
+)
 
 app = FastAPI()
 
@@ -13,7 +17,7 @@ def treemap_req(
     election_type: str,
     election_year: int,
     office: str,
-    territory_code: str
+    territory_code: str,
 ):
     clean_election_type = unquote(election_type)
     clean_office = unquote(office)
@@ -21,46 +25,67 @@ def treemap_req(
 
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT office_name
-        FROM wh.dim_office
-        WHERE lower(office_code) = lower(%s)
-           OR lower(office_name) = lower(%s)
-        LIMIT 1
-    """, (clean_office, clean_office))
+    try:
+        cursor.execute(
+            """
+            SELECT office_name
+            FROM wh.dim_office
+            WHERE lower(office_code) = lower(%s)
+               OR lower(office_name) = lower(%s)
+            LIMIT 1
+            """,
+            (clean_office, clean_office),
+        )
 
-    row = cursor.fetchone()
-    if row:
-        clean_office = row[0] 
+        row = cursor.fetchone()
 
-    cursor.execute(
-        """
-        SELECT sigla, votes
-        FROM wh.results_for_territory_parties(
-            %s, %s, %s, %s
-        );
-        """,
-        (clean_election_type,
-         election_year,
-         clean_office,
-         clean_territory_code)
-    )
+        if row:
+            clean_office = row[0]
 
-    rows = cursor.fetchall()
-    cursor.close()
+        cursor.execute(
+            """
+            SELECT sigla, votes
+            FROM wh.results_for_territory_parties(
+                %s, %s, %s, %s
+            );
+            """,
+            (
+                clean_election_type,
+                election_year,
+                clean_office,
+                clean_territory_code,
+            ),
+        )
 
-    labels = [r[0] for r in rows]
-    values = [r[1] for r in rows]
+        rows = cursor.fetchall()
 
-    svg = treemap_svg(labels, values)
-    return Response(content=svg, media_type="image/svg+xml")
+        if not rows:
+            raise HTTPException(
+                status_code=404,
+                detail="No data found for given parameters"
+            )
+
+        labels = [r[0] for r in rows]
+        values = [r[1] for r in rows]
+
+        svg = treemap_svg(labels, values)
+
+        return Response(
+            content=svg,
+            media_type="image/svg+xml"
+        )
+
+    finally:
+        cursor.close()
 
 
 def treemap_svg(labels, values):
-    fig = go.Figure(go.Treemap(
-        labels=labels,
-        parents=[""] * len(labels),
-        values=values
-    ))
+    fig = go.Figure(
+        go.Treemap(
+            labels=labels,
+            parents=[""] * len(labels),
+            values=values,
+        )
+    )
 
     return fig.to_image(format="svg").decode("utf-8")

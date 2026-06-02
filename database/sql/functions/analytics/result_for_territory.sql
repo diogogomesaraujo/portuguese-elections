@@ -1,6 +1,4 @@
-DROP FUNCTION IF EXISTS wh.result_for_territory(
-    text, integer, text, text, text, text
-);
+DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text, text);
 
 CREATE OR REPLACE FUNCTION wh.result_for_territory(
     p_election_type text,
@@ -23,7 +21,7 @@ CREATE OR REPLACE FUNCTION wh.result_for_territory(
     LANGUAGE sql
     STABLE
 AS $$
-WITH selected AS (
+WITH wanted_party AS (
     SELECT
         e.election_key,
         e.election_type,

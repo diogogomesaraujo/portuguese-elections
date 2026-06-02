@@ -22,7 +22,6 @@ CREATE OR REPLACE FUNCTION wh.results_for_territory_parties(
     LANGUAGE sql
     STABLE
 AS $$
-WITH selected AS (
     SELECT
         e.election_key,
         e.election_type,
