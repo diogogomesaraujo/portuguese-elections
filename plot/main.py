@@ -8,6 +8,11 @@ conn = psycopg2.connect(database="elections", port="5432")
 
 app = FastAPI()
 
+TRANSPARENT_LAYOUT = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+)
+
 
 @app.get("/treemap/{election_type}/{election_year}/{office}/{territory_code}")
 def treemap_req(
@@ -80,6 +85,8 @@ def treemap_svg(labels, values):
             values=values,
         )
     )
+
+    fig.update_layout(**TRANSPARENT_LAYOUT)
 
     return fig.to_image(format="svg").decode("utf-8")
 
@@ -163,6 +170,7 @@ def partygrowth_req(
         yaxis_title="Votes",
         showlegend=False,
         margin=dict(l=40, r=20, t=60, b=40),
+        **TRANSPARENT_LAYOUT,
     )
 
     svg = fig.to_image(format="svg").decode("utf-8")
@@ -229,7 +237,7 @@ def topgrowing_req(
         return Response(
             content="""
             <svg xmlns="http://www.w3.org/2000/svg" width="900" height="300">
-                <rect width="100%" height="100%" fill="white"/>
+                <rect width="100%" height="100%" fill="none"/>
                 <text x="40" y="150" font-size="24" fill="black">No data found</text>
             </svg>
             """,
@@ -284,6 +292,7 @@ def topgrowing_req(
         yaxis_title="Seats" if metric == "seats" else "Votes",
         showlegend=True,
         margin=dict(l=40, r=20, t=60, b=40),
+        **TRANSPARENT_LAYOUT,
     )
 
     svg = fig.to_image(format="svg").decode("utf-8")

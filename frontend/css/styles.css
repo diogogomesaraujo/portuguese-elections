@@ -1,5 +1,48 @@
 @import url("./satoshi.css");
 
+body {
+    background-color: #050d0e;
+}
+
+button {
+    appearance: none;
+    background-color: #162620;
+    border-color: #162620;
+    color: #b3c6bc;
+    border-radius: 2rem;
+    padding: 0.25rem 2rem;
+}
+
+select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    margin-bottom: 0.2rem;
+    color: #b3c6bc;
+    text-indent: 1%;
+    -moz-appearance: none;
+    appearance: none;
+    background-color: #0f1a1d;
+    border-color: #162620;
+    border-radius: 2rem;
+    padding: 0.25rem 0.25rem;
+}
+
+select:focus {
+    outline: none;
+    box-shadow: none;
+}
+
 * {
     font-family: "Satoshi-Variable", sans-serif;
+    font-size: 16px;
+    color: #ecf5f0;
+    padding: 5px;
+}
+
+h1 {
+    padding-top: 0px;
+    margin-top: 0px;
+    margin-bottom: 0px;
+    font-size: 40px;
+    text-indent: 1%;
 }
