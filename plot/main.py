@@ -79,96 +79,6 @@ def treemap_svg(labels: list[str], values: list[int]) -> str:
 
 
 @app.get(
-    "/partygrowth/{election_type}/{office}/{territory_code}/{territory_level}/{party_sigla}/"
-)
-def partygrowth_req(
-    election_type: str,
-    office: str,
-    territory_code: str,
-    territory_level: str,
-    party_sigla: str,
-):
-    election_type = unquote(election_type)
-    office = unquote(office)
-    territory_code = unquote(territory_code)
-    territory_level = unquote(territory_level)
-    party_sigla = unquote(party_sigla)
-
-    conn = get_conn()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(
-            """
-            SELECT
-                election_year,
-                result_sigla,
-                result_kind,
-                votes,
-                vote_pct,
-                seats,
-                chart_color
-            FROM wh.party_over_years(
-                %s, %s, %s, %s, %s
-            );
-            """,
-            (
-                election_type,
-                office,
-                territory_code,
-                territory_level,
-                party_sigla,
-            ),
-        )
-
-        rows = cursor.fetchall()
-
-    finally:
-        cursor.close()
-        conn.close()
-
-    if not rows:
-        return Response(
-            content=svg_message("No data found"),
-            media_type="image/svg+xml",
-        )
-
-    years = [str(row[0]) for row in rows]
-    votes = [int(row[3] or 0) for row in rows]
-    colors = [normalize_color(str(row[6] or "#999999")) for row in rows]
-
-    fig = go.Figure(
-        data=[
-            go.Bar(
-                x=years,
-                y=votes,
-                text=votes,
-                marker_color=colors,
-            )
-        ]
-    )
-
-    fig.update_traces(
-        texttemplate="%{text}",
-        textposition="outside",
-        hoverinfo="skip",
-        hovertemplate=None,
-    )
-
-    fig.update_layout(
-        title=f"{party_sigla} over the years",
-        xaxis_title="Election year",
-        yaxis_title="Votes",
-        showlegend=False,
-        margin=dict(l=40, r=20, t=60, b=40),
-    )
-
-    svg = fig.to_image(format="svg").decode("utf-8")
-
-    return Response(content=svg, media_type="image/svg+xml")
-
-
-@app.get(
     "/riseandfall/{election_type}/{office}/{territory_code}/{territory_level}/{metric}/{direction}/"
 )
 def riseandfall_req(
@@ -269,9 +179,16 @@ def riseandfall_req(
         hovertemplate=None,
     )
 
+    direction_label = "rising" if direction == "rise" else "falling"
+    metric_label = "seats" if metric == "seats" else "votes"
+
     fig.update_layout(
         barmode="group",
-        title=f"Top 4 party {direction} by {metric}",
+        title={
+            "text": f"Top {direction_label} parties by {metric_label}",
+            "x": 0.5,
+            "xanchor": "center",
+        },
         xaxis_title="Election year",
         yaxis_title="Seats" if metric == "seats" else "Votes",
         showlegend=True,
