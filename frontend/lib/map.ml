@@ -6,6 +6,7 @@ open Bonsai
 open! Bonsai_web
 open Bonsai.Let_syntax
 open Ppx_css
+open Svg
 
 module Map = struct
   module F = Bonsai_web_ui_form
@@ -116,80 +117,68 @@ end
         end)
   end
 
-  module MapType = struct
+  module PlotType = struct
     type t =
-     | Country
-     | District of string
-     | Municipality of string
-     | Parish of string
-     [@@deriving sexp, equal]
+      | Treemap
+      [@@deriving sexp, equal]
 
-    let uri_of ~uri ~election_type ~election_year ~office ~t =
+    let uri_of ~uri ~election_type ~election_year ~office ~territory_code ~t =
       let base =
         match t with
-        | Country -> uri ^ "/map/country/_"
-        | District d -> uri ^ "/map/district/" ^ d
-        | Municipality m -> uri ^ "/map/municipality/" ^ m
-        | Parish p -> uri ^ "/map/parish/" ^ p
+        | Treemap -> uri ^ "/plot/treemap"
       in
 
       Printf.sprintf
-        "%s/%s/%s/%s"
+        "%s/%s/%s/%s/%s"
         base
         election_type
         election_year
         office
+        territory_code
   end
 
-  let get ~uri ?arguments () =
-    Api.get ?arguments ~uri ()
+  module Territory = struct
+    type t =
+      { code: string }
+      [@@deriving sexp, equal]
 
-  let map ~uri ?arguments  () =
-    let%sub svg, set_svg =
-      Bonsai.state (module String) ~default_model:""
-    in
+    let default = { code = "PT" }
 
-    let%sub effect =
-      let%arr set_svg = set_svg
-      and uri = uri in
+    let uri_of ~uri ~code ~election_type ~election_year ~office =
+      Printf.sprintf
+        "%s/map/%s/%s/%s/%s"
+        uri
+        code
+        election_type
+        election_year
+        office
+
+    let get ~uri =
       let%bind.Effect res =
         Bonsai_web.Effect.of_deferred_fun
-          (fun uri -> get ~uri ?arguments ()) uri
+          (fun uri -> Api.get ~uri ()) uri
       in
 
-      match res with
-      | Ok val_opt ->
-        (match Yojson.Safe.from_string val_opt with
-        | `String s -> set_svg s
-        | _ -> set_svg "")
-      | Error e ->
-        "failed to request image xD" |> set_svg
-    in
+      let res =
+        match res with
+        | Ok res -> res
+        | _ -> "upsie"
+      in
 
-    let%sub () =
-      Bonsai.Edge.on_change
-        (module String) uri
-        ~callback:
-          (let%map effect = effect in
-              fun _ -> effect)
-    in
+      match Yojson.Safe.from_string res with
+      | `String code ->
+        Effect.return { code = code }
+      | _ -> Effect.return default
+  end
 
-    let%arr svg = svg in
-
-    Vdom.Node.div [
-      Vdom.Node.inner_html
-        ~tag:"div"
-        ~attrs:[]
-        ~this_html_is_sanitized_and_is_totally_safe_trust_me: svg
-        ()
-    ]
+  let make = Svg.make
 
   let card ~uri () =
     let open Vdom.Node in
-    let%sub map_state, set_map =
+    let%sub territory_state, set_territory =
       Bonsai.state
-        (module MapType)
-        ~default_model: Country
+        (module Territory)
+        ~default_model: Territory.default
     in
 
     let%sub field_options_state, set_field_options =
@@ -200,20 +189,6 @@ end
 
     let%sub form =
       Selected.form ~field_options: field_options_state
-    in
-
-    let%sub map_type =
-      let%arr form = form
-      in
-
-      match F.value form with
-      | Ok f when not (String.equal f.parish not_selected) ->
-        MapType.Parish f.parish
-      | Ok f when not (String.equal f.municipality not_selected) ->
-        MapType.Municipality f.municipality
-      | Ok f when not (String.equal f.district not_selected) ->
-        MapType.District f.district
-      | _ -> MapType.Country
     in
 
     let%sub fetch_field_options =
@@ -264,21 +239,60 @@ end
         ; election_types }
     in
 
-    let uri =
-      let%map map_state = map_state
+    let%sub fetch_territory =
+      let%arr form = form
+        and set_territory = set_territory
+      in
+
+      let f =
+        match F.value form  with
+        | Ok f -> f
+        | _ -> Selected.default
+      in
+
+      let uri = Printf.sprintf
+        "%s/territory/%s/%s/%s"
+        uri f.district f.municipality f.parish
+      in
+
+      let%bind.Effect territory = Territory.get ~uri in
+
+      set_territory territory
+    in
+
+    let map_uri =
+      let%map territory_state = territory_state
       and form = form in
       let f = F.value_or_default form ~default: Selected.default in
 
-      MapType.uri_of
+      Territory.uri_of
+        ~uri
+        ~code:          territory_state.code
+        ~election_type: f.election_type
+        ~election_year: f.election_year
+        ~office:        f.office
+    in
+
+    let%sub map =
+      make ~uri: map_uri ()
+    in
+
+    let plot_uri =
+      let%map territory_state = territory_state
+      and form = form in
+      let f = F.value_or_default form ~default: Selected.default in
+
+      PlotType.uri_of
         ~uri
         ~election_type: f.election_type
         ~election_year: f.election_year
         ~office:        f.office
-        ~t:             map_state
+        ~territory_code: territory_state.code
+        ~t: Treemap
     in
 
-    let%sub map =
-      map ~uri ()
+    let%sub plot =
+      make ~uri: plot_uri ()
     in
 
     let%sub () = Bonsai.Edge.on_change'
@@ -312,17 +326,30 @@ end
           fun _ -> effect)
     in
 
+    let%sub () = Bonsai.Edge.on_change
+      (module Selected)
+      (let%map form = form in F.value form |> Or_error.ok_exn)
+      ~callback:
+        (let%map effect =
+          fetch_territory
+        in
+          fun _ -> effect)
+    in
+
     let%arr form = form
-    and set_map = set_map
-    and map_type = map_type
-    and map = map in
+      and set_territory = set_territory
+      and territory_state = territory_state
+      and map = map
+      and plot = plot
+    in
 
     Vdom.Node.div
       [ F.view_as_vdom form
       ;  Vdom.Node.button
         ~attrs: [Vdom.Attr.on_click (fun _ ->
-                                      set_map map_type)]
+                                      set_territory territory_state)]
           [ Vdom.Node.text "Update" ]
       ; map
+      ; plot
       ]
 end
