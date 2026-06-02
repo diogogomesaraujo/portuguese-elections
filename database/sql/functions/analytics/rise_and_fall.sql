@@ -1,11 +1,12 @@
-DROP FUNCTION IF EXISTS wh.top_party_growth(text, text, text, text, text);
+DROP FUNCTION IF EXISTS wh.rise_and_fall(text, text, text, text, text, text);
 
-CREATE OR REPLACE FUNCTION wh.top_party_growth(
+CREATE OR REPLACE FUNCTION wh.rise_and_fall(
     p_election_type text,
     p_office text,
     p_territory_code text,
     p_territory_level text,
-    p_metric text DEFAULT 'votes'
+    p_metric text DEFAULT 'votes',
+    p_direction text DEFAULT 'rise'
 )
 RETURNS TABLE (
     election_year integer,
@@ -15,7 +16,9 @@ RETURNS TABLE (
     value numeric,
     votes bigint,
     seats integer,
-    growth_value numeric
+    variation_value numeric,
+    proportional_variation numeric,
+    variation_direction text
 )
 LANGUAGE sql
 STABLE
@@ -113,6 +116,7 @@ base AS (
     WHERE e.election_type = p_election_type
       AND o.office_code = p_office
       AND p_metric IN ('votes', 'seats')
+      AND p_direction IN ('rise', 'fall')
     GROUP BY
         e.election_year,
         pe.political_entity_key,
@@ -164,39 +168,97 @@ lasts AS (
     WHERE rn_last = 1
 ),
 
-growth AS (
+variation AS (
     SELECT
         l.political_entity_key,
-        (l.last_value - f.first_value)::numeric AS growth_value
+
+        f.first_value,
+        l.last_value,
+
+        CASE
+            WHEN p_direction = 'rise'
+            THEN (l.last_value - f.first_value)::numeric
+            ELSE (f.first_value - l.last_value)::numeric
+        END AS variation_value,
+
+        CASE
+            WHEN p_direction = 'rise'
+             AND f.first_value > 0
+            THEN ((l.last_value - f.first_value) / f.first_value)::numeric
+
+            WHEN p_direction = 'fall'
+             AND f.first_value > 0
+            THEN ((f.first_value - l.last_value) / f.first_value)::numeric
+
+            ELSE NULL
+        END AS proportional_variation,
+
+        CASE
+            WHEN p_direction = 'rise'
+             AND f.first_value > 0
+             AND l.last_value > 0
+            THEN ((l.last_value - f.first_value) / f.first_value) * sqrt(l.last_value)
+
+            WHEN p_direction = 'fall'
+             AND f.first_value > 0
+             AND l.last_value >= 0
+            THEN ((f.first_value - l.last_value) / f.first_value) * sqrt(f.first_value)
+
+            ELSE NULL
+        END AS variation_score
     FROM lasts l
     JOIN firsts f
       ON f.political_entity_key = l.political_entity_key
-    WHERE (l.last_value - f.first_value) > 0
 ),
 
 top_parties AS (
     SELECT
-        g.political_entity_key,
-        g.growth_value
-    FROM growth g
-    ORDER BY g.growth_value DESC
+        v.political_entity_key,
+        v.variation_value,
+        v.proportional_variation,
+        v.variation_score
+    FROM variation v
+    WHERE v.variation_value > 0
+      AND v.proportional_variation IS NOT NULL
+      AND v.variation_score IS NOT NULL
+    ORDER BY
+        v.variation_score DESC,
+        v.variation_value DESC
     LIMIT 4
+),
+
+selected_rows AS (
+    SELECT
+        v.election_year,
+        v.sigla::text AS sigla,
+        v.name::text AS name,
+        v.color::text AS color,
+        v.metric_value AS value,
+        v.votes,
+        v.seats,
+        tp.variation_value,
+        tp.proportional_variation,
+        tp.variation_score,
+        p_direction::text AS variation_direction
+    FROM values_by_year v
+    JOIN top_parties tp
+      ON tp.political_entity_key = v.political_entity_key
 )
 
 SELECT
-    v.election_year,
-    v.sigla::text,
-    v.name::text,
-    v.color::text,
-    v.metric_value AS value,
-    v.votes,
-    v.seats,
-    tp.growth_value
-FROM values_by_year v
-JOIN top_parties tp
-  ON tp.political_entity_key = v.political_entity_key
+    sr.election_year,
+    sr.sigla,
+    sr.name,
+    sr.color,
+    sr.value,
+    sr.votes,
+    sr.seats,
+    sr.variation_value,
+    sr.proportional_variation,
+    sr.variation_direction
+FROM selected_rows sr
 ORDER BY
-    v.election_year ASC,
-    tp.growth_value DESC,
-    v.sigla ASC;
+    sr.election_year ASC,
+    sr.variation_score DESC,
+    sr.sigla ASC;
 $$;
