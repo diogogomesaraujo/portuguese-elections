@@ -31,11 +31,14 @@ module Map = struct
       ; election_types = [not_selected]
       ; offices        = [not_selected] }
 
+    let rec consume : Yojson.Safe.t -> string = function
+      | `String s -> s
+      | s -> Yojson.Safe.to_string s
+
     let all ~uri =
       let%bind.Effect res =
         Bonsai_web.Effect.of_deferred_fun
-          (fun uri -> Api.get ~uri ()) uri
-      in
+          (fun uri -> Api.get ~uri ()) uri in
 
       [not_selected] @ (match res with
       | Ok res ->
@@ -43,10 +46,7 @@ module Map = struct
         | `List regions ->
           List.filter_map
             regions
-            ~f: (fun json ->
-              match json with
-              | `String r -> Some r
-              | _ -> None)
+            ~f: (fun json -> Some (json |> consume))
         | _ -> []
         )
       | _ -> []) |> Effect.return
@@ -340,11 +340,12 @@ end
     in
 
     Vdom.Node.div
-      [ F.view_as_vdom form
-      ;  Vdom.Node.button
+      [ h1 [text "\\dt portuguese_elections.*"]
+      ; F.view_as_vdom form
+      (* ;  Vdom.Node.button
         ~attrs: [Vdom.Attr.on_click (fun _ ->
                                       set_territory territory_state)]
-          [ Vdom.Node.text "Update" ]
+          [ Vdom.Node.text "Query" ] *)
       ; map
       ; plot
       ]
