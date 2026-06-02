@@ -36,6 +36,11 @@ BEGIN
                          ELSE NULL
         END;
 
+    -- Adjust precision if territory level is 'country'
+    IF v_level = 'country' THEN
+        precision_value := precision_value * 500;
+    END IF;
+
     WITH draw AS (
         SELECT
             t.territory_code,

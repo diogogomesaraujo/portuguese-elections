@@ -197,9 +197,7 @@ end
       in
 
       let form_state =
-        match F.value current_form with
-        | Ok f -> f
-        | _    -> Selected.default
+        F.value_or_default current_form ~default: Selected.default
       in
 
       let%bind.Effect parishes =
@@ -245,9 +243,7 @@ end
       in
 
       let f =
-        match F.value form  with
-        | Ok f -> f
-        | _ -> Selected.default
+        F.value_or_default form ~default: Selected.default
       in
 
       let uri = Printf.sprintf
