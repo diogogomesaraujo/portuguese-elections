@@ -1,11 +1,12 @@
-DROP FUNCTION IF EXISTS wh.top_party_growth(text, text, text, text, text);
+DROP FUNCTION IF EXISTS wh.rise_and_fall(text, text, text, text, text, text);
 
-CREATE OR REPLACE FUNCTION wh.top_party_growth(
+CREATE OR REPLACE FUNCTION wh.rise_and_fall(
     p_election_type text,
     p_office text,
     p_territory_code text,
     p_territory_level text,
-    p_metric text DEFAULT 'votes'
+    p_metric text DEFAULT 'votes',
+    p_direction text DEFAULT 'growth'
 )
 RETURNS TABLE (
     election_year integer,
@@ -15,7 +16,8 @@ RETURNS TABLE (
     value numeric,
     votes bigint,
     seats integer,
-    growth_value numeric
+    variation_value numeric,
+    variation_direction text
 )
 LANGUAGE sql
 STABLE
@@ -113,6 +115,7 @@ base AS (
     WHERE e.election_type = p_election_type
       AND o.office_code = p_office
       AND p_metric IN ('votes', 'seats')
+      AND p_direction IN ('growth', 'fall')
     GROUP BY
         e.election_year,
         pe.political_entity_key,
@@ -164,22 +167,27 @@ lasts AS (
     WHERE rn_last = 1
 ),
 
-growth AS (
+variation AS (
     SELECT
         l.political_entity_key,
-        (l.last_value - f.first_value)::numeric AS growth_value
+
+        CASE
+            WHEN p_direction = 'growth'
+            THEN (l.last_value - f.first_value)::numeric
+            ELSE (f.first_value - l.last_value)::numeric
+        END AS variation_value
     FROM lasts l
     JOIN firsts f
       ON f.political_entity_key = l.political_entity_key
-    WHERE (l.last_value - f.first_value) > 0
 ),
 
 top_parties AS (
     SELECT
-        g.political_entity_key,
-        g.growth_value
-    FROM growth g
-    ORDER BY g.growth_value DESC
+        v.political_entity_key,
+        v.variation_value
+    FROM variation v
+    WHERE v.variation_value > 0
+    ORDER BY v.variation_value DESC
     LIMIT 4
 )
 
@@ -191,12 +199,13 @@ SELECT
     v.metric_value AS value,
     v.votes,
     v.seats,
-    tp.growth_value
+    tp.variation_value,
+    p_direction::text AS variation_direction
 FROM values_by_year v
 JOIN top_parties tp
   ON tp.political_entity_key = v.political_entity_key
 ORDER BY
     v.election_year ASC,
-    tp.growth_value DESC,
+    tp.variation_value DESC,
     v.sigla ASC;
 $$;
