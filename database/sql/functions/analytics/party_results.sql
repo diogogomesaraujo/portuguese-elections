@@ -1,11 +1,12 @@
 DROP FUNCTION IF EXISTS wh.party_results(text, integer, text, text, text);
+DROP FUNCTION IF EXISTS wh.party_results(text, integer, text, text);
+DROP FUNCTION IF EXISTS wh.party_results(text, integer, text, bigint);
 
 CREATE OR REPLACE FUNCTION wh.party_results(
     p_election_type text,
     p_election_year integer DEFAULT NULL,
     p_office text DEFAULT NULL,
-    p_territory_code text DEFAULT NULL,
-    p_territory_level text DEFAULT NULL
+    p_territory_key bigint DEFAULT NULL
 )
 RETURNS TABLE (
     election_key bigint,
@@ -13,7 +14,7 @@ RETURNS TABLE (
     election_year integer,
     office_key bigint,
     office_code text,
-    territory_code text,
+    territory_key bigint,
     territory_level text,
 
     political_entity_key bigint,
@@ -77,122 +78,168 @@ target AS (
       ON parent.territory_code = t.parent_code
     LEFT JOIN wh.dim_territory grandparent
       ON grandparent.territory_code = parent.parent_code
-    WHERE t.territory_code = p_territory_code
-      AND t.territory_level = p_territory_level
+    WHERE t.territory_key = p_territory_key
     LIMIT 1
 ),
 
+exact_rows_exist AS (
+    SELECT EXISTS (
+        SELECT 1
+        FROM selected s
+        JOIN target tg ON true
+        JOIN wh.fact_vote_result fvr
+          ON fvr.election_key = s.election_key
+         AND fvr.office_key = s.office_key
+         AND fvr.territory_key = tg.territory_key
+    ) AS exists_exact
+),
+
 vote_territories AS (
-    /*
-      Legislative / AR:
-      vote territory is district.
-    */
     SELECT
         s.election_key,
         s.office_key,
-        vt.territory_key
+        tg.territory_key
     FROM selected s
     JOIN target tg ON true
-    JOIN wh.dim_territory vt
-      ON vt.territory_level = 'district'
-     AND vt.territory_code =
-        CASE
-            WHEN tg.territory_level = 'district'
-            THEN tg.territory_code
-
-            WHEN tg.territory_level = 'municipality'
-            THEN tg.parent_code
-
-            WHEN tg.territory_level = 'parish'
-            THEN tg.grandparent_territory_code
-
-            ELSE tg.territory_code
-        END
-    WHERE lower(s.election_type) = 'legislativas'
-       OR upper(s.office_code) = 'AR'
+    CROSS JOIN exact_rows_exist ex
+    WHERE ex.exists_exact = true
 
     UNION ALL
 
-    /*
-      CM / AM:
-      vote territory is municipality.
-    */
     SELECT
         s.election_key,
         s.office_key,
         vt.territory_key
     FROM selected s
     JOIN target tg ON true
+    CROSS JOIN exact_rows_exist ex
+    JOIN wh.dim_territory vt
+      ON vt.territory_level = 'district'
+     AND (
+            (
+                tg.territory_level = 'country'
+            )
+            OR
+            (
+                tg.territory_level = 'district'
+                AND vt.territory_code =
+                    CASE
+                        WHEN tg.territory_code IN ('31', '32') THEN '20'
+                        WHEN tg.territory_code IN ('41', '42', '43', '44', '45', '46', '47', '48', '49') THEN '19'
+                        ELSE tg.territory_code
+                    END
+            )
+            OR
+            (
+                tg.territory_level = 'municipality'
+                AND vt.territory_code =
+                    CASE
+                        WHEN tg.parent_code IN ('31', '32') THEN '20'
+                        WHEN tg.parent_code IN ('41', '42', '43', '44', '45', '46', '47', '48', '49') THEN '19'
+                        ELSE tg.parent_code
+                    END
+            )
+            OR
+            (
+                tg.territory_level = 'parish'
+                AND vt.territory_code =
+                    CASE
+                        WHEN tg.grandparent_territory_code IN ('31', '32') THEN '20'
+                        WHEN tg.grandparent_territory_code IN ('41', '42', '43', '44', '45', '46', '47', '48', '49') THEN '19'
+                        ELSE tg.grandparent_territory_code
+                    END
+            )
+         )
+    WHERE ex.exists_exact = false
+      AND (
+            lower(s.election_type) = 'legislativas'
+            OR upper(s.office_code) = 'AR'
+          )
+
+    UNION ALL
+
+    SELECT
+        s.election_key,
+        s.office_key,
+        vt.territory_key
+    FROM selected s
+    JOIN target tg ON true
+    CROSS JOIN exact_rows_exist ex
     JOIN wh.dim_territory vt
       ON vt.territory_level = 'municipality'
      AND (
-        (
-            tg.territory_level = 'district'
-            AND vt.parent_code = tg.territory_code
-        )
-        OR
-        (
-            tg.territory_level = 'municipality'
-            AND vt.territory_code = tg.territory_code
-        )
-        OR
-        (
-            tg.territory_level = 'parish'
-            AND vt.territory_code = tg.parent_code
-        )
-     )
-    WHERE upper(s.office_code) IN ('CM', 'AM')
+            (
+                tg.territory_level = 'country'
+            )
+            OR
+            (
+                tg.territory_level = 'district'
+                AND vt.parent_code = tg.territory_code
+            )
+            OR
+            (
+                tg.territory_level = 'municipality'
+                AND vt.territory_code = tg.territory_code
+            )
+            OR
+            (
+                tg.territory_level = 'parish'
+                AND vt.territory_code = tg.parent_code
+            )
+         )
+    WHERE ex.exists_exact = false
+      AND upper(s.office_code) IN ('CM', 'AM')
 
     UNION ALL
 
-    /*
-      AF:
-      vote territory is parish.
-    */
     SELECT
         s.election_key,
         s.office_key,
         vt.territory_key
     FROM selected s
     JOIN target tg ON true
+    CROSS JOIN exact_rows_exist ex
     JOIN wh.dim_territory vt
       ON vt.territory_level = 'parish'
     LEFT JOIN wh.dim_territory parent_municipality
       ON parent_municipality.territory_code = vt.parent_code
      AND parent_municipality.territory_level = 'municipality'
-    WHERE upper(s.office_code) = 'AF'
+    WHERE ex.exists_exact = false
+      AND upper(s.office_code) = 'AF'
       AND (
-        (
-            tg.territory_level = 'district'
-            AND parent_municipality.parent_code = tg.territory_code
-        )
-        OR
-        (
-            tg.territory_level = 'municipality'
-            AND vt.parent_code = tg.territory_code
-        )
-        OR
-        (
-            tg.territory_level = 'parish'
-            AND vt.territory_code = tg.territory_code
-        )
-      )
+            (
+                tg.territory_level = 'country'
+            )
+            OR
+            (
+                tg.territory_level = 'district'
+                AND parent_municipality.parent_code = tg.territory_code
+            )
+            OR
+            (
+                tg.territory_level = 'municipality'
+                AND vt.parent_code = tg.territory_code
+            )
+            OR
+            (
+                tg.territory_level = 'parish'
+                AND vt.territory_code = tg.territory_code
+            )
+          )
 
     UNION ALL
 
-    /*
-      PR / PE:
-      vote territory is country.
-    */
     SELECT
         s.election_key,
         s.office_key,
         vt.territory_key
     FROM selected s
+    CROSS JOIN exact_rows_exist ex
     JOIN wh.dim_territory vt
       ON vt.territory_level = 'country'
      AND vt.territory_code = 'PT'
-    WHERE upper(s.office_code) IN ('PR', 'PE')
+    WHERE ex.exists_exact = false
+      AND upper(s.office_code) IN ('PR', 'PE')
 ),
 
 calculated_seat_result AS (
@@ -235,8 +282,8 @@ party_totals AS (
         s.office_key,
         s.office_code,
 
-        p_territory_code AS territory_code,
-        p_territory_level AS territory_level,
+        tg.territory_key,
+        tg.territory_level,
 
         pe.political_entity_key,
         pe.sigla,
@@ -249,6 +296,7 @@ party_totals AS (
         SUM(COALESCE(csr.seats, 0))::integer AS calculated_seats,
         SUM(COALESCE(osr.seats, 0))::integer AS official_seats
     FROM selected s
+    JOIN target tg ON true
     JOIN vote_territories vt
       ON vt.election_key = s.election_key
      AND vt.office_key = s.office_key
@@ -274,6 +322,8 @@ party_totals AS (
         s.election_year,
         s.office_key,
         s.office_code,
+        tg.territory_key,
+        tg.territory_level,
         pe.political_entity_key,
         pe.sigla,
         pe.name,
@@ -286,19 +336,19 @@ ranked AS (
         pt.*,
 
         SUM(pt.votes) OVER (
-            PARTITION BY pt.election_key, pt.office_key
+            PARTITION BY pt.election_key, pt.office_key, pt.territory_key
         ) AS total_votes,
 
         SUM(pt.calculated_seats) OVER (
-            PARTITION BY pt.election_key, pt.office_key
+            PARTITION BY pt.election_key, pt.office_key, pt.territory_key
         ) AS total_calculated_seats,
 
         SUM(pt.official_seats) OVER (
-            PARTITION BY pt.election_key, pt.office_key
+            PARTITION BY pt.election_key, pt.office_key, pt.territory_key
         ) AS total_official_seats,
 
         row_number() OVER (
-            PARTITION BY pt.election_key, pt.office_key
+            PARTITION BY pt.election_key, pt.office_key, pt.territory_key
             ORDER BY
                 pt.votes DESC,
                 pt.calculated_seats DESC,
@@ -313,7 +363,7 @@ SELECT
     ranked.election_year,
     ranked.office_key,
     ranked.office_code::text,
-    ranked.territory_code::text,
+    ranked.territory_key,
     ranked.territory_level::text,
 
     ranked.political_entity_key,

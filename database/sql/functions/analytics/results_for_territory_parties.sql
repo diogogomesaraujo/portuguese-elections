@@ -1,11 +1,10 @@
-DROP FUNCTION IF EXISTS wh.results_for_territory_parties(text, integer, text, text, text);
+DROP FUNCTION IF EXISTS wh.results_for_territory_parties(text, integer, text, bigint);
 
 CREATE OR REPLACE FUNCTION wh.results_for_territory_parties(
     p_election_type text,
     p_election_year integer,
     p_office text,
-    p_territory_code text,
-    p_territory_level text
+    p_territory_key bigint
 )
 RETURNS TABLE (
     political_entity_key bigint,
@@ -37,8 +36,7 @@ AS $$
         p_election_type,
         p_election_year,
         p_office,
-        p_territory_code,
-        p_territory_level
+        p_territory_key
     ) b
     ORDER BY
         b.votes DESC,

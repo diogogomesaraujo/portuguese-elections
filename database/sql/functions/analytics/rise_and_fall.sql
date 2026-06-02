@@ -1,10 +1,11 @@
 DROP FUNCTION IF EXISTS wh.rise_and_fall(text, text, text, text, text, text);
+DROP FUNCTION IF EXISTS wh.rise_and_fall(text, text, text, text, text);
+DROP FUNCTION IF EXISTS wh.rise_and_fall(text, text, bigint, text, text);
 
 CREATE OR REPLACE FUNCTION wh.rise_and_fall(
     p_election_type text,
     p_office text,
-    p_territory_code text,
-    p_territory_level text,
+    p_territory_key bigint,
     p_metric text DEFAULT 'votes',
     p_direction text DEFAULT 'rise'
 )
@@ -30,8 +31,7 @@ WITH RECURSIVE root_territory AS (
         t.territory_name,
         t.territory_level
     FROM wh.dim_territory t
-    WHERE t.territory_code = p_territory_code
-      AND t.territory_level = p_territory_level
+    WHERE t.territory_key = p_territory_key
     LIMIT 1
 ),
 

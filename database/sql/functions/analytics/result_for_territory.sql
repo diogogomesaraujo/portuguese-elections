@@ -1,11 +1,12 @@
 DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text, text);
+DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text);
+DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, bigint, text);
 
 CREATE OR REPLACE FUNCTION wh.result_for_territory(
     p_election_type text,
     p_election_year integer,
     p_office text,
-    p_territory_code text,
-    p_territory_level text,
+    p_territory_key bigint,
     p_party_sigla text DEFAULT NULL
 )
 RETURNS TABLE (
@@ -38,8 +39,7 @@ results AS (
         p_election_type,
         p_election_year,
         p_office,
-        p_territory_code,
-        p_territory_level
+        p_territory_key
     ) b
 )
 

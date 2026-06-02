@@ -2,19 +2,17 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="c6bcc8d8-bb29-46cd-9bdd-cc0df77b3c9d" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/database/sql/functions/spatial/test.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/f58d6f02-f341-46a3-955b-4d6a28db2b1c.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/f58d6f02-f341-46a3-955b-4d6a28db2b1c.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/f58d6f02-f341-46a3-955b-4d6a28db2b1c/storage_v2/_src_/database/elections.eu9X4A/schema/public.abK9xQ.zip" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/f58d6f02-f341-46a3-955b-4d6a28db2b1c/storage_v2/_src_/database/elections.eu9X4A/schema/public.abK9xQ.zip" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/database/sql/functions/analytics/political_entity_order.sql" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/data_source_mapping.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/data_source_mapping.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/lib/map.ml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/lib/map.ml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/database/data/converted/01-mapa_I_vf_r2.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/database/data/converted/01-mapa_I_vf_r2.xlsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/country.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/country.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/district_municipalities.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/district_municipalities.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/municipality_parishes.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/municipality_parishes.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/parish.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/parish.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/init/functions.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/init/functions.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/schemas/warehouse.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/schemas/warehouse.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/party_results.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/party_results.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/resolve_match_territory.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/resolve_match_territory.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/resolve_vote_territory.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/resolve_vote_territory.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/result_for_territory.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/result_for_territory.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/results_for_territory_parties.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/results_for_territory_parties.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/rise_and_fall.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/rise_and_fall.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/plot/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/plot/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -24,34 +22,34 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 0,
-  "fromUser": false
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0,
+  &quot;fromUser&quot;: false
+}</component>
   <component name="ProjectId" id="3EX0Qp4jk7ghx1CDtrcWoi2t7C6" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/rodrigoaraujo"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/rodrigoaraujo&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "postgresql"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
     ],
-    "com.intellij.ide.scratch.LRUPopupBuilder$1/": [
-      "PostgreSQL"
+    &quot;com.intellij.ide.scratch.LRUPopupBuilder$1/&quot;: [
+      &quot;PostgreSQL&quot;
     ],
-    "com.intellij.ide.scratch.ScratchImplUtil$2/New Scratch File": [
-      "PostgreSQL"
+    &quot;com.intellij.ide.scratch.ScratchImplUtil$2/New Scratch File&quot;: [
+      &quot;PostgreSQL&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
       <changelist id="c6bcc8d8-bb29-46cd-9bdd-cc0df77b3c9d" name="Changes" comment="" />

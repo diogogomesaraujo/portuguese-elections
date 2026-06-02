@@ -13,20 +13,15 @@ TRANSPARENT_LAYOUT = dict(
 )
 
 
-@app.get(
-    "/treemap/{election_type}/{election_year}/{office}/{territory_code}/{territory_level}"
-)
+@app.get("/treemap/{election_type}/{election_year}/{office}/{territory_key}/")
 def treemap_req(
     election_type: str,
     election_year: int,
     office: str,
-    territory_code: str,
-    territory_level: str,
+    territory_key: int,
 ):
     election_type = unquote(election_type)
     office = unquote(office)
-    territory_code = unquote(territory_code)
-    territory_level = unquote(territory_level)
 
     conn = get_conn()
     cursor = conn.cursor()
@@ -36,15 +31,14 @@ def treemap_req(
             """
             SELECT sigla, votes
             FROM wh.results_for_territory_parties(
-                %s, %s, %s, %s, %s
+                %s::text, %s::integer, %s::text, %s::bigint
             );
             """,
             (
                 election_type,
                 election_year,
                 office,
-                territory_code,
-                territory_level,
+                territory_key,
             ),
         )
 
@@ -79,26 +73,23 @@ def treemap_svg(labels: list[str], values: list[int]) -> str:
 
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
+        plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
     )
 
     return fig.to_image(format="svg").decode("utf-8")
 
 
-@app.get(
-    "/riseandfall/{election_type}/{office}/{territory_code}/{territory_level}/{metric}/{direction}/"
-)
+@app.get("/riseandfall/{election_type}/{office}/{territory_key}/{metric}/{direction}/")
 def riseandfall_req(
     election_type: str,
     office: str,
-    territory_code: str,
-    territory_level: str,
+    territory_key: int,
     metric: str,
     direction: str,
 ):
     election_type = unquote(election_type)
     office = unquote(office)
-    territory_code = unquote(territory_code)
-    territory_level = unquote(territory_level)
     metric = unquote(metric)
     direction = unquote(direction)
 
@@ -119,14 +110,13 @@ def riseandfall_req(
                 variation_value,
                 variation_direction
             FROM wh.rise_and_fall(
-                %s, %s, %s, %s, %s, %s
+                %s::text, %s::text, %s::bigint, %s::text, %s::text
             );
             """,
             (
                 election_type,
                 office,
-                territory_code,
-                territory_level,
+                territory_key,
                 metric,
                 direction,
             ),
@@ -144,6 +134,12 @@ def riseandfall_req(
             media_type="image/svg+xml",
         )
 
+    rows = sorted(
+        rows,
+        key=lambda row: float(row[4] or 0),
+        reverse=True,
+    )[:20]
+
     years = sorted({str(row[0]) for row in rows})
 
     parties: list[str] = []
@@ -158,7 +154,6 @@ def riseandfall_req(
         party_rows = [row for row in rows if str(row[1]) == party]
 
         values_by_year = {str(row[0]): float(row[4] or 0) for row in party_rows}
-
         values = [values_by_year.get(year, 0) for year in years]
 
         labels = [
@@ -199,7 +194,8 @@ def riseandfall_req(
         yaxis_title="Seats" if metric == "seats" else "Votes",
         showlegend=True,
         margin=dict(l=40, r=20, t=60, b=40),
-        **TRANSPARENT_LAYOUT,
+        paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
+        plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
     )
 
     svg = fig.to_image(format="svg").decode("utf-8")
@@ -207,24 +203,31 @@ def riseandfall_req(
     return Response(content=svg, media_type="image/svg+xml")
 
 
-@app.get(
-    "/distribution/{election_type}/{election_year}/{office}/{territory_code}/{territory_level}/"
-)
+@app.get("/distribution/{election_type}/{election_year}/{office}/{territory_key}/")
 def distribution_req(
     election_type: str,
     election_year: int,
     office: str,
-    territory_code: str,
-    territory_level: str,
+    territory_key: int,
 ):
     election_type = unquote(election_type)
     office = unquote(office)
-    territory_code = unquote(territory_code)
-    territory_level = unquote(territory_level)
+
+    territory_info = fetch_territory_info(territory_key)
+
+    if territory_info is None:
+        return Response(
+            content=svg_message("Territory not found"),
+            media_type="image/svg+xml",
+        )
+
+    territory_code = territory_info["territory_code"]
+    territory_level = territory_info["territory_level"]
 
     mode = distribution_mode(
         election_type=election_type,
         office=office,
+        territory_code=territory_code,
         territory_level=territory_level,
     )
 
@@ -233,8 +236,7 @@ def distribution_req(
             election_type=election_type,
             election_year=election_year,
             office=office,
-            territory_code=territory_code,
-            territory_level=territory_level,
+            territory_key=territory_key,
         )
 
         if not rows:
@@ -261,8 +263,7 @@ def distribution_req(
             election_type=election_type,
             election_year=election_year,
             office=office,
-            territory_code=territory_code,
-            territory_level=territory_level,
+            territory_key=territory_key,
         )
 
         if not row:
@@ -288,8 +289,7 @@ def distribution_req(
         election_type=election_type,
         election_year=election_year,
         office=office,
-        territory_code=territory_code,
-        territory_level=territory_level,
+        territory_key=territory_key,
     )
 
     if not rows:
@@ -316,26 +316,28 @@ def distribution_req(
 def distribution_mode(
     election_type: str,
     office: str,
+    territory_code: str,
     territory_level: str,
 ) -> str:
     election_type = election_type.upper()
     office = office.upper()
+    territory_code = territory_code.upper()
     territory_level = territory_level.lower()
 
     if election_type == "LEGISLATIVAS" and office == "AR":
-        if territory_level == "country":
+        if territory_code == "PT" or territory_level == "country":
             return "seat_distribution"
         return "aggregate_distribution"
 
     if election_type == "AUTARQUICAS" and office == "AM":
-        if territory_level == "municipality":
-            return "seat_distribution"
-        return "aggregate_distribution"
+        if territory_code == "PT" or territory_level == "country":
+            return "aggregate_distribution"
+        return "seat_distribution"
 
     if election_type == "AUTARQUICAS" and office == "AF":
-        if territory_level == "parish":
-            return "seat_distribution"
-        return "aggregate_distribution"
+        if territory_code == "PT" or territory_level == "country":
+            return "aggregate_distribution"
+        return "seat_distribution"
 
     if election_type == "AUTARQUICAS" and office == "CM":
         return "elected_distribution"
@@ -343,13 +345,7 @@ def distribution_mode(
     return "aggregate_distribution"
 
 
-def fetch_seat_distribution_rows(
-    election_type: str,
-    election_year: int,
-    office: str,
-    territory_code: str,
-    territory_level: str,
-):
+def fetch_territory_info(territory_key: int) -> dict[str, str] | None:
     conn = get_conn()
     cursor = conn.cursor()
 
@@ -357,45 +353,198 @@ def fetch_seat_distribution_rows(
         cursor.execute(
             """
             SELECT
+                territory_code,
+                territory_name,
+                territory_level
+            FROM wh.dim_territory
+            WHERE territory_key = %s::bigint
+            LIMIT 1;
+            """,
+            (territory_key,),
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "territory_code": str(row[0]),
+            "territory_name": str(row[1]),
+            "territory_level": str(row[2]),
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def fetch_seat_distribution_rows(
+    election_type: str,
+    election_year: int,
+    office: str,
+    territory_key: int,
+):
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            WITH selected AS (
+                SELECT
+                    e.election_key,
+                    e.election_type,
+                    e.election_year,
+                    o.office_key,
+                    o.office_code
+                FROM wh.dim_election e
+                JOIN wh.dim_office o
+                  ON (
+                        lower(o.office_code) = lower(%s::text)
+                        OR lower(o.office_name) = lower(%s::text)
+                     )
+                WHERE lower(e.election_type) = lower(%s::text)
+                  AND e.election_year = %s::integer
+                LIMIT 1
+            ),
+
+            target AS (
+                SELECT
+                    t.territory_key,
+                    t.territory_code,
+                    t.territory_level,
+                    t.parent_code,
+                    parent.territory_code AS parent_territory_code,
+                    parent.territory_level AS parent_territory_level,
+                    grandparent.territory_code AS grandparent_territory_code,
+                    grandparent.territory_level AS grandparent_territory_level
+                FROM wh.dim_territory t
+                LEFT JOIN wh.dim_territory parent
+                  ON parent.territory_code = t.parent_code
+                LEFT JOIN wh.dim_territory grandparent
+                  ON grandparent.territory_code = parent.parent_code
+                WHERE t.territory_key = %s::bigint
+                LIMIT 1
+            ),
+
+            seat_territories AS (
+                SELECT
+                    vt.territory_key
+                FROM selected s
+                JOIN target tg ON true
+                JOIN wh.dim_territory vt
+                  ON vt.territory_level = 'district'
+                 AND (
+                        tg.territory_level = 'country'
+                        OR (
+                            tg.territory_level = 'district'
+                            AND vt.territory_code = tg.territory_code
+                        )
+                        OR (
+                            tg.territory_level = 'municipality'
+                            AND vt.territory_code = tg.parent_code
+                        )
+                        OR (
+                            tg.territory_level = 'parish'
+                            AND vt.territory_code = tg.grandparent_territory_code
+                        )
+                     )
+                WHERE lower(s.election_type) = 'legislativas'
+                   OR upper(s.office_code) = 'AR'
+
+                UNION ALL
+
+                SELECT
+                    vt.territory_key
+                FROM selected s
+                JOIN target tg ON true
+                JOIN wh.dim_territory vt
+                  ON vt.territory_level = 'municipality'
+                 AND (
+                        tg.territory_level = 'country'
+                        OR (
+                            tg.territory_level = 'district'
+                            AND vt.parent_code = tg.territory_code
+                        )
+                        OR (
+                            tg.territory_level = 'municipality'
+                            AND vt.territory_code = tg.territory_code
+                        )
+                        OR (
+                            tg.territory_level = 'parish'
+                            AND vt.territory_code = tg.parent_code
+                        )
+                     )
+                WHERE upper(s.office_code) IN ('AM', 'CM')
+
+                UNION ALL
+
+                SELECT
+                    vt.territory_key
+                FROM selected s
+                JOIN target tg ON true
+                JOIN wh.dim_territory vt
+                  ON vt.territory_level = 'parish'
+                LEFT JOIN wh.dim_territory parent_municipality
+                  ON parent_municipality.territory_code = vt.parent_code
+                 AND parent_municipality.territory_level = 'municipality'
+                WHERE upper(s.office_code) = 'AF'
+                  AND (
+                        tg.territory_level = 'country'
+                        OR (
+                            tg.territory_level = 'district'
+                            AND parent_municipality.parent_code = tg.territory_code
+                        )
+                        OR (
+                            tg.territory_level = 'municipality'
+                            AND vt.parent_code = tg.territory_code
+                        )
+                        OR (
+                            tg.territory_level = 'parish'
+                            AND vt.territory_code = tg.territory_code
+                        )
+                      )
+
+                UNION ALL
+
+                SELECT
+                    vt.territory_key
+                FROM selected s
+                JOIN wh.dim_territory vt
+                  ON vt.territory_level = 'country'
+                 AND vt.territory_code = 'PT'
+                WHERE upper(s.office_code) IN ('PR', 'PE')
+            )
+
+            SELECT
                 pe.sigla,
                 SUM(COALESCE(sr.seats, 0))::integer AS seats,
                 pe.color
-            FROM wh.fact_seat_result sr
-            JOIN wh.dim_election e
-              ON e.election_key = sr.election_key
-            JOIN wh.dim_office o
-              ON o.office_key = sr.office_key
+            FROM selected s
+            JOIN seat_territories st
+              ON true
+            JOIN wh.fact_seat_result sr
+              ON sr.election_key = s.election_key
+             AND sr.office_key = s.office_key
+             AND sr.territory_key = st.territory_key
             JOIN wh.dim_political_entity pe
               ON pe.political_entity_key = sr.political_entity_key
-            JOIN wh.dim_territory t
-              ON t.territory_key = sr.territory_key
-            WHERE e.election_type = %s
-              AND e.election_year = %s
-              AND o.office_code = %s
-              AND (
-                    t.territory_code = %s
-                    OR t.parent_code = %s
-                    OR (
-                        %s = 'PT'
-                        AND %s = 'country'
-                        AND t.territory_level = 'district'
-                    )
-                  )
-              AND COALESCE(sr.seats, 0) > 0
+            WHERE COALESCE(sr.seats, 0) > 0
             GROUP BY
                 pe.sigla,
                 pe.color
             ORDER BY
-                seats DESC;
+                wh.political_entity_order(pe.sigla),
+                seats DESC,
+                pe.sigla ASC;
             """,
             (
+                office,
+                office,
                 election_type,
                 election_year,
-                office,
-                territory_code,
-                territory_code,
-                territory_code,
-                territory_level,
+                territory_key,
             ),
         )
 
@@ -410,8 +559,7 @@ def fetch_elected_row(
     election_type: str,
     election_year: int,
     office: str,
-    territory_code: str,
-    territory_level: str,
+    territory_key: int,
 ):
     conn = get_conn()
     cursor = conn.cursor()
@@ -424,7 +572,7 @@ def fetch_elected_row(
                 votes,
                 color
             FROM wh.results_for_territory_parties(
-                %s, %s, %s, %s, %s
+                %s::text, %s::integer, %s::text, %s::bigint
             )
             WHERE COALESCE(votes, 0) > 0
             ORDER BY votes DESC
@@ -434,8 +582,7 @@ def fetch_elected_row(
                 election_type,
                 election_year,
                 office,
-                territory_code,
-                territory_level,
+                territory_key,
             ),
         )
 
@@ -483,7 +630,7 @@ def parliament_svg(
 
     seat_positions = sorted(
         seat_positions,
-        key=lambda item: (item[1], item[0]),
+        key=lambda item: (-item[1], item[0]),
     )
 
     fig = go.Figure()
@@ -529,9 +676,7 @@ def parliament_svg(
         width=900,
     )
 
-    svg = fig.to_image(format="svg").decode("utf-8")
-
-    return svg
+    return fig.to_image(format="svg").decode("utf-8")
 
 
 def square_bar_svg(
@@ -541,6 +686,16 @@ def square_bar_svg(
     title: str,
     y_title: str,
 ) -> str:
+    items = sorted(
+        zip(parties, values, colors),
+        key=lambda item: item[1],
+        reverse=True,
+    )[:20]
+
+    parties = [item[0] for item in items]
+    values = [item[1] for item in items]
+    colors = [item[2] for item in items]
+
     fig = go.Figure()
 
     for party, value, color in zip(parties, values, colors):
@@ -574,6 +729,8 @@ def square_bar_svg(
         yaxis_title=y_title,
         showlegend=False,
         margin=dict(l=40, r=20, t=70, b=80),
+        paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
+        plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
     )
 
     return fig.to_image(format="svg").decode("utf-8")
@@ -668,7 +825,7 @@ def normalize_color(color: str) -> str:
 def svg_message(message: str) -> str:
     return f"""
     <svg xmlns="http://www.w3.org/2000/svg" width="900" height="300">
-        <rect width="100%" height="100% " fill="white"/>
+        <rect width="100%" height="100%" fill="white"/>
         <text x="40" y="150" font-size="24" fill="black">{message}</text>
     </svg>
     """
