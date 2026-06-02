@@ -151,3 +151,108 @@ def plotly_color(color: str) -> str:
         return f"rgba({r},{g},{b},{a})"
 
     return "#999999"
+
+
+@app.get(
+    "/topgrowing/{election_type}/{office}/{territory_code}/{territory_level}/{metric}/"
+)
+def topgrowing_req(
+    election_type: str,
+    office: str,
+    territory_code: str,
+    territory_level: str,
+    metric: str,
+):
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            election_year,
+            sigla,
+            name,
+            color,
+            value,
+            votes,
+            seats,
+            growth_value
+        FROM wh.top_party_growth(
+            %s, %s, %s, %s, %s
+        );
+        """,
+        (
+            election_type,
+            office,
+            territory_code,
+            territory_level,
+            metric,
+        ),
+    )
+
+    rows = cursor.fetchall()
+    cursor.close()
+
+    if not rows:
+        return Response(
+            content="""
+            <svg xmlns="http://www.w3.org/2000/svg" width="900" height="300">
+                <rect width="100%" height="100%" fill="white"/>
+                <text x="40" y="150" font-size="24" fill="black">No data found</text>
+            </svg>
+            """,
+            media_type="image/svg+xml",
+        )
+
+    years = sorted({str(row[0]) for row in rows})
+
+    parties = []
+    for row in rows:
+        party = str(row[1])
+        if party not in parties:
+            parties.append(party)
+
+    fig = go.Figure()
+
+    for party in parties:
+        party_rows = [row for row in rows if str(row[1]) == party]
+
+        values_by_year = {str(row[0]): float(row[4] or 0) for row in party_rows}
+
+        values = [values_by_year.get(year, 0) for year in years]
+
+        labels = [
+            str(int(value)) if value == int(value) else str(round(value, 2))
+            for value in values
+        ]
+
+        color = plotly_color(str(party_rows[0][3] or "#999999"))
+
+        fig.add_trace(
+            go.Bar(
+                x=years,
+                y=values,
+                name=party,
+                text=labels,
+                marker_color=color,
+            )
+        )
+
+    fig.update_traces(
+        texttemplate="%{text}",
+        textposition="outside",
+        hoverinfo="skip",
+        hovertemplate=None,
+    )
+
+    fig.update_layout(
+        barmode="group",
+        title=f"Top 4 growing parties by {metric}",
+        xaxis_title="Election year",
+        yaxis_title="Seats" if metric == "seats" else "Votes",
+        showlegend=True,
+        margin=dict(l=40, r=20, t=60, b=40),
+    )
+
+    svg = fig.to_image(format="svg").decode("utf-8")
+
+    return Response(content=svg, media_type="image/svg+xml")
