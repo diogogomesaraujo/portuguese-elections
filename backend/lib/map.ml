@@ -11,10 +11,10 @@ module Map = struct
           %s,
           %s,
           NULL,
-          '#000000',
+          '#0F1A1D',
           '50',
           '#cccccc',
-          '0.85',
+          '0.95',
           %d)"
         (Req.to_param (election_type, true))
         (Req.to_param (election_year, false))
