@@ -13,7 +13,7 @@ module Map = struct
           NULL,
           '#000000',
           '50',
-          '#cccccc',
+          '#0F1A1D',
           '0.85',
           %d)"
         (Req.to_param (election_type, true))
