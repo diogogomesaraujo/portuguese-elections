@@ -45,6 +45,7 @@ BEGIN
     WITH draw AS (
         SELECT
             t.territory_code,
+            t.territory_key,
             t.territory_name,
             t.territory_level,
             t.parent_name,
@@ -110,7 +111,7 @@ BEGIN
                      p_election_type,
                      p_election_year,
                      p_office,
-                     p_territory_key,
+                     d.territory_key,
                      p_party_sigla
                                         ) r ON true
              WHERE d.geom IS NOT NULL
