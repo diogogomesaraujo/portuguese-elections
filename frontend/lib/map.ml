@@ -103,37 +103,41 @@ end
             |> String.capitalize
             |> String.substr_replace_all ~pattern:"_" ~with_:" ")
 
+          (* let f = (fun x -> x |> Ubase.from_utf8 |> String.uppercase) *)
+
+          let f = Fn.id
+
           let form_for_field : type a. a Typed_field.t -> a F.t Computation.t = function
             | Typed_field.District ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
-                  field_options.districts)
+                  List.map field_options.districts ~f)
             | Typed_field.Municipality ->
               F.Elements.Dropdown.list
                 (module String)
               (let%map field_options = field_options in
-                field_options.municipalities)
+                List.map field_options.municipalities ~f)
             | Typed_field.Parish ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
-                  field_options.parishes)
+                  List.map field_options.parishes ~f)
             | Typed_field.Office ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
-                  field_options.offices |> FieldOptions.office_names)
+                  field_options.offices |> FieldOptions.office_names |> List.map ~f)
             | Typed_field.Election_type ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
-                  field_options.election_types)
+                  List.map field_options.election_types ~f)
             | Typed_field.Election_year ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
-                  field_options.election_years)
+                  List.map field_options.election_years ~f)
           ;;
         end)
   end
@@ -189,7 +193,7 @@ end
       match Yojson.Safe.from_string res with
       | `String code ->
         Effect.return { code = code }
-      | _ -> Effect.return default
+      | _ -> Effect.return { code = res }
   end
 
   let make = Svg.make
@@ -218,7 +222,7 @@ end
       in
 
       let form_state =
-        F.value_or_default current_form ~default: Selected.default
+        F.value current_form |> Or_error.ok_exn
       in
 
       let%bind.Effect parishes =
@@ -264,7 +268,7 @@ end
       in
 
       let f =
-        F.value_or_default form ~default: Selected.default
+        F.value form |> Or_error.ok_exn
       in
 
       let uri = Printf.sprintf
@@ -280,7 +284,7 @@ end
     let map_uri =
       let%map territory_state = territory_state
       and form = form in
-      let f = F.value_or_default form ~default: Selected.default in
+      let f = F.value form |> Or_error.ok_exn in
 
       Territory.uri_of
         ~uri
@@ -296,14 +300,24 @@ end
 
     let plot_uri =
       let%map territory_state = territory_state
+      and field_options_state = field_options_state
       and form = form in
-      let f = F.value_or_default form ~default: Selected.default in
+      let f = F.value form |> Or_error.ok_exn in
+
+      let office =
+        match List.find field_options_state.offices
+          ~f:(fun (n, c) -> String.equal n f.office) with
+        | Some (name, code) ->
+          code
+        | None              ->
+          not_selected
+      in
 
       PlotType.uri_of
         ~uri
         ~election_type: f.election_type
         ~election_year: f.election_year
-        ~office:        f.office
+        ~office
         ~territory_code: territory_state.code
         ~t: Treemap
     in

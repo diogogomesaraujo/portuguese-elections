@@ -13,23 +13,20 @@ TRANSPARENT_LAYOUT = dict(
 )
 
 
-@app.get("/treemap/{election_type}/{election_year}/{office}/{territory_key}/")
+@app.get("/treemap/{election_type}/{election_year}/{office}/{territory_key}")
 def treemap_req(
     election_type: str,
     election_year: int,
     office: str,
     territory_key: int,
 ):
-    election_type = unquote(election_type)
-    office = unquote(office)
-
     conn = get_conn()
     cursor = conn.cursor()
 
     try:
         cursor.execute(
             """
-            SELECT sigla, votes
+            SELECT sigla, votes, color
             FROM wh.results_for_territory_parties(
                 %s::text, %s::integer, %s::text, %s::bigint
             );
@@ -56,18 +53,20 @@ def treemap_req(
 
     labels = [str(r[0]) for r in rows]
     values = [int(r[1] or 0) for r in rows]
+    colors = [normalize_color(str(r[2] or "#999999")) for r in rows]
 
-    svg = treemap_svg(labels, values)
+    svg = treemap_svg(labels, values, colors)
 
     return Response(content=svg, media_type="image/svg+xml")
 
 
-def treemap_svg(labels: list[str], values: list[int]) -> str:
+def treemap_svg(labels: list[str], values: list[int], colors: list[str]) -> str:
     fig = go.Figure(
         go.Treemap(
             labels=labels,
             parents=[""] * len(labels),
             values=values,
+            marker=dict(colors=colors),
         )
     )
 
@@ -80,7 +79,7 @@ def treemap_svg(labels: list[str], values: list[int]) -> str:
     return fig.to_image(format="svg").decode("utf-8")
 
 
-@app.get("/riseandfall/{election_type}/{office}/{territory_key}/{metric}/{direction}/")
+@app.get("/riseandfall/{election_type}/{office}/{territory_key}/{metric}/{direction}")
 def riseandfall_req(
     election_type: str,
     office: str,
@@ -203,7 +202,7 @@ def riseandfall_req(
     return Response(content=svg, media_type="image/svg+xml")
 
 
-@app.get("/distribution/{election_type}/{election_year}/{office}/{territory_key}/")
+@app.get("/distribution/{election_type}/{election_year}/{office}/{territory_key}")
 def distribution_req(
     election_type: str,
     election_year: int,
