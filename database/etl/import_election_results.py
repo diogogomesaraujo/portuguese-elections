@@ -946,10 +946,15 @@ def save_official_seat(
         )
         SELECT election_id, office_id, territory_id, candidacy_id, %s, 'official', now()
         FROM candidate
-        ON CONFLICT (election_id, office_id, territory_id, candidacy_id)
+        ON CONFLICT (
+            election_id,
+            office_id,
+            territory_id,
+            candidacy_id,
+            method
+        )
         DO UPDATE SET
             seats = EXCLUDED.seats,
-            method = 'official',
             updated_at = now()
         """,
         (sigla, entity_type, office_code, territory_code, election_code, sigla, seats),
@@ -1103,7 +1108,7 @@ def main() -> None:
         cur.execute("CALL op.populate_seat_count();")
         cur.execute("CALL op.calculate_seat_results();")
         if not args.skip_refresh:
-            cur.execute("CALL wh.refresh_wh();")
+            cur.execute("CALL wh.refresh();")
 
     conn.close()
 

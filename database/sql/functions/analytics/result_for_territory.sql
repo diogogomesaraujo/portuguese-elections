@@ -1,4 +1,3 @@
-
 DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text, text);
 DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text);
 DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, bigint, text);
@@ -27,7 +26,8 @@ STABLE
 AS $$
 WITH wanted_party AS (
     SELECT
-        pe.political_entity_key
+        pe.political_entity_key,
+        pe.sigla
     FROM wh.dim_political_entity pe
     WHERE lower(pe.sigla) = lower(p_party_sigla)
     LIMIT 1
@@ -36,7 +36,7 @@ WITH wanted_party AS (
 results AS (
     SELECT
         b.*
-    FROM wh.party_results(
+    FROM wh.results_for_territory_parties(
         p_election_type,
         p_election_year,
         p_office,
@@ -80,6 +80,7 @@ WHERE
 ORDER BY
     r.votes DESC,
     r.seats DESC,
+    wh.political_entity_order(r.sigla) ASC,
     r.sigla ASC
 LIMIT 1;
 $$;

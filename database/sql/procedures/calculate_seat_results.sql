@@ -21,14 +21,6 @@ BEGIN
          AND seat_count.territory_id = vote.territory_id
         CROSS JOIN LATERAL generate_series(1, seat_count.seats) AS divisor(n)
         WHERE vote.votes > 0
-          AND NOT EXISTS (
-              SELECT 1
-              FROM op.seat_result official
-              WHERE official.election_id = vote.election_id
-                AND official.office_id = vote.office_id
-                AND official.territory_id = vote.territory_id
-                AND official.method = 'official'
-          )
     ),
 
     ranked AS (
@@ -79,11 +71,15 @@ BEGIN
         'dhondt_calculated',
         now()
     FROM allocated
-    ON CONFLICT (election_id, office_id, territory_id, candidacy_id)
+    ON CONFLICT (
+        election_id,
+        office_id,
+        territory_id,
+        candidacy_id,
+        method
+    )
     DO UPDATE SET
         seats = EXCLUDED.seats,
-        method = EXCLUDED.method,
-        updated_at = now()
-    WHERE op.seat_result.method = 'dhondt_calculated';
+        updated_at = now();
 END;
 $$;

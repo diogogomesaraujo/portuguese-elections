@@ -128,7 +128,20 @@ CREATE TABLE IF NOT EXISTS op.seat_result (
     seats int NOT NULL CHECK (seats >= 0),
     method text NOT NULL DEFAULT 'official',
     updated_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (election_id, office_id, territory_id, candidacy_id)
+    PRIMARY KEY (election_id, office_id, territory_id, candidacy_id, method)
+);
+
+-- Existing databases created before method was part of the key need this migration.
+ALTER TABLE op.seat_result
+DROP CONSTRAINT IF EXISTS seat_result_pkey;
+
+ALTER TABLE op.seat_result
+ADD PRIMARY KEY (
+    election_id,
+    office_id,
+    territory_id,
+    candidacy_id,
+    method
 );
 
 CREATE TABLE IF NOT EXISTS op.seat_count (
