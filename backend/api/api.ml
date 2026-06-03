@@ -136,17 +136,17 @@ module Api = struct
 
   module Map = struct
     let get =
-      Dream.get "/:code/:type/:year/:office"
+      Dream.get "/:key/:type/:year/:office"
         (fun req -> Dream.sql req (fun conn ->
           let module Conn = (val conn : Caqti_lwt.CONNECTION) in
 
-          let code          = Dream.param req "code"   |> Uri.pct_decode in
+          let key           = Dream.param req "key"   |> Uri.pct_decode in
           let election_type = Dream.param req "type"   |> Uri.pct_decode in
           let election_year = Dream.param req "year"   |> Uri.pct_decode in
           let office        = Dream.param req "office" |> Uri.pct_decode in
 
           let%lwt result = Conn.find_opt (Map.get
-                                            ~code
+                                            ~key
                                             ~precision: 1
                                             ~election_type
                                             ~election_year
@@ -214,7 +214,7 @@ module Api = struct
           let municipality = Dream.param req "municipality" |> Uri.pct_decode in
           let parish       = Dream.param req "parish"       |> Uri.pct_decode in
 
-          let%lwt res = Conn.find_opt (Territory.code ~district ~municipality ~parish) () in
+          let%lwt res = Conn.find_opt (Territory.key ~district ~municipality ~parish) () in
           res |> Response.one))
   end
 

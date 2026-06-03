@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION map_territory(
     p_election_type  text,
     p_election_year  integer,
     p_office         text,
-    p_territory_code text,
+    p_territory_key  bigint,
     p_party_sigla    text,
     stroke           text,
     strokewidth      text,
@@ -20,14 +20,15 @@ CREATE OR REPLACE FUNCTION map_territory(
     RETURNS text AS
 $$
 DECLARE
-    svg           text;
-    v_level       text;
-    v_child_level text;
+    svg              text;
+    v_level          text;
+    v_child_level    text;
+    p_territory_code text;
 BEGIN
-    SELECT territory_level
-    INTO v_level
+    SELECT territory_level, territory_code, territory_key
+    INTO v_level, p_territory_code
     FROM wh.dim_territory
-    WHERE territory_code = p_territory_code;
+    WHERE territory_key = p_territory_key;
 
     v_child_level := CASE v_level
                          WHEN 'country'      THEN 'district'
@@ -109,8 +110,7 @@ BEGIN
                      p_election_type,
                      p_election_year,
                      p_office,
-                     d.territory_code,
-                     d.territory_level,
+                     p_territory_key,
                      p_party_sigla
                                         ) r ON true
              WHERE d.geom IS NOT NULL

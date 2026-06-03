@@ -142,7 +142,7 @@ end
       { code: string }
       [@@deriving sexp, equal]
 
-    let default = { code = "PT" }
+    let default = { code = "1" }
 
     let uri_of ~uri ~code ~election_type ~election_year ~office =
       Printf.sprintf
