@@ -13,35 +13,63 @@ from typing import Any, Iterable, Literal
 import psycopg2
 from openpyxl import load_workbook
 
-PARTY_HEADERS = {
-    "A",
-    "ADN",
-    "B.E.",
-    "CDS-PP",
-    "CH",
-    "E",
-    "IL",
-    "JPP",
-    "L",
-    "MAS",
-    "MPT",
-    "NC",
-    "ND",
-    "PAN",
-    "PCTP/MRPP",
-    "PDR",
-    "PLS",
-    "PNR",
-    "PPD/PSD",
-    "PPM",
-    "PPV/CDC",
-    "PS",
-    "PTP",
-    "PURP",
-    "R.I.R.",
-    "VP",
-    "PCP-PEV",
+KNOWN_PARTY_ORDERS: dict[str, int] = {
+    "PCP-PEV": 10,
+    "PCTP/MRPP": 15,
+    "B.E.": 20,
+    "L": 30,
+    "PAN": 35,
+    "PS": 40,
+    "JPP": 45,
+    "MPT": 50,
+    "PDR": 52,
+    "VP": 55,
+    "IL": 60,
+    "R.I.R.": 62,
+    "ADN": 65,
+    "NC": 67,
+    "ND": 68,
+    "PPD/PSD": 70,
+    "A": 72,
+    "CDS-PP": 80,
+    "PPM": 85,
+    "CH": 90,
+    "MAS": 18,
+    "E": 92,
+    "PLS": 57,
+    "PNR": 88,
+    "PPV/CDC": 82,
+    "PTP": 42,
+    "PURP": 43,
 }
+
+KNOWN_PARTY_ALIASES: dict[str, tuple[str, ...]] = {
+    "PCP-PEV": ("PCP-PEV", "CDU"),
+    "B.E.": ("B.E.", "BE"),
+    "R.I.R.": ("R.I.R.", "RIR"),
+    "VP": ("VP", "VOLT"),
+    "PPD/PSD": ("PPD/PSD", "PSD"),
+    "CDS-PP": ("CDS-PP", "CDS/PP", "CDS"),
+    "NC": ("NC",),
+    "ND": ("ND",),
+}
+
+KNOWN_PARTIES = set(KNOWN_PARTY_ORDERS)
+
+# Headers that may appear in CNE files. AD is intentionally here even though it is
+# a coalition, because some source files expose it like a normal result column.
+PARTY_HEADERS = KNOWN_PARTIES | {"AD"}
+
+EXPLICIT_COALITION_SIGLAS = {"AD", "PCP-PEV", "CDU"}
+LEGISLATIVE_AD_ELECTIONS = {"LEGISLATIVAS_2024", "LEGISLATIVAS_2025"}
+LEGISLATIVE_AD_VARIANTS = {
+    "AD",
+    "PPD/PSD.CDS-PP",
+    "PPD/PSD.CDS-PP.PPM",
+    "PPD/PSD.CDS-PP.PPM.A",
+}
+
+GCE_PREFIXES = ("GCE-", "MOV", "M.A")
 
 LEGISLATIVE_OFFICE_CODE = "AR"
 
@@ -93,7 +121,37 @@ def normalize_sigla(value: Any) -> str | None:
     text = clean_text(value)
     if not text:
         return None
-    return re.sub(r"\s+", "", text.upper())
+
+    sigla = re.sub(r"\s+", "", text.upper())
+
+    # Fix known typo from source files.
+    sigla = sigla.replace("PPD/PDS", "PPD/PSD")
+
+    if sigla in {"BE", "B.E"}:
+        return "B.E."
+
+    if sigla in {"RIR", "R.I.R"}:
+        return "R.I.R."
+
+    if sigla in {"VOLT", "VOLT."}:
+        return "VP"
+
+    return sigla
+
+
+def canonical_sigla_for_election(sigla: str, election_code: str) -> str:
+    normalized = normalize_sigla(sigla) or sigla
+
+    # Legislative AD must be aggregated only for the elections where AD was the
+    # real national candidacy. Do not apply this to LEGISLATIVAS_2022 or to
+    # autárquicas, because there PSD/CDS/PPM combinations are real separate lists.
+    if (
+        election_code in LEGISLATIVE_AD_ELECTIONS
+        and normalized in LEGISLATIVE_AD_VARIANTS
+    ):
+        return "AD"
+
+    return normalized
 
 
 def normalize_code(value: Any) -> str | None:
@@ -131,26 +189,97 @@ def parse_bracket_labels(cell: Any) -> list[str]:
     text = clean_text(cell)
     if not text:
         return []
-    return [m.strip() for m in re.findall(r"\[([^\]]+)\]", text) if m.strip()]
+
+    labels: list[str] = []
+
+    for match in re.findall(r"\[([^\]]+)\]", text):
+        sigla = normalize_sigla(match)
+        if sigla and sigla not in labels:
+            labels.append(sigla)
+
+    return labels
+
+
+def _member_pattern(alias: str) -> re.Pattern[str]:
+    return re.compile(rf"(^|[.+/\-]){re.escape(alias)}($|[.+/\-])")
+
+
+PARTY_MEMBER_PATTERNS: list[tuple[str, re.Pattern[str]]] = []
+for _member_sigla in KNOWN_PARTY_ORDERS:
+    aliases = KNOWN_PARTY_ALIASES.get(_member_sigla, (_member_sigla,))
+    alias_group = "|".join(re.escape(alias) for alias in aliases)
+    PARTY_MEMBER_PATTERNS.append(
+        (_member_sigla, re.compile(rf"(^|[.+/\-])(?:{alias_group})($|[.+/\-])"))
+    )
+
+
+def is_exact_known_party(sigla: str) -> bool:
+    normalized = normalize_sigla(sigla) or sigla
+    if normalized in KNOWN_PARTIES and normalized not in {"AD", "PCP-PEV"}:
+        return True
+    return normalized in {"B.E.", "R.I.R.", "VP"}
+
+
+def detect_known_party_members(sigla: str) -> list[str]:
+    normalized = normalize_sigla(sigla) or sigla
+
+    if normalized == "AD":
+        return ["PPD/PSD", "CDS-PP", "PPM"]
+
+    members: list[str] = []
+    for member_sigla, pattern in PARTY_MEMBER_PATTERNS:
+        if pattern.search(normalized) and member_sigla not in members:
+            members.append(member_sigla)
+
+    members.sort(key=lambda item: KNOWN_PARTY_ORDERS.get(item, 999))
+    return members
 
 
 def looks_like_coalition_sigla(sigla: str) -> bool:
-    return "/" in sigla or "." in sigla
+    normalized = normalize_sigla(sigla) or sigla
+
+    if normalized.startswith(GCE_PREFIXES):
+        return False
+
+    if normalized in EXPLICIT_COALITION_SIGLAS:
+        return True
+
+    if is_exact_known_party(normalized):
+        return False
+
+    return len(detect_known_party_members(normalized)) >= 2
 
 
 def safe_gce_sigla(sigla: str) -> str:
-    if sigla in PARTY_HEADERS:
-        return f"GCE-{sigla}"
-    return sigla
+    normalized = normalize_sigla(sigla) or sigla
+
+    if normalized in PARTY_HEADERS:
+        return f"GCE-{normalized}"
+
+    return normalized
 
 
-def entity_type_for_sigla(sigla: str) -> str:
-    if sigla in PARTY_HEADERS:
-        return "party"
-    if sigla.startswith("GCE-") or sigla.startswith("MOV") or sigla.startswith("M.A"):
-        return "gce"
-    if "." in sigla or "/" in sigla:
+def entity_type_for_sigla(sigla: str, source_entity_type: str | None = None) -> str:
+    normalized = normalize_sigla(sigla) or sigla
+
+    # When the CNE autárquicas file explicitly puts a label under SIGLAS COLIGAÇÕES
+    # or SIGLAS GCE, trust the source. This keeps local labels like O.I., C.R. and
+    # F.P. as coalitions even when they cannot be decomposed into national parties.
+    if source_entity_type in {"coalition", "gce", "blank", "null", "other"}:
+        return source_entity_type
+
+    if normalized in EXPLICIT_COALITION_SIGLAS:
         return "coalition"
+
+    if is_exact_known_party(normalized):
+        return "party"
+
+    if normalized.startswith(GCE_PREFIXES):
+        return "gce"
+
+    if len(detect_known_party_members(normalized)) >= 2:
+        return "coalition"
+
     return "party"
 
 
@@ -387,6 +516,7 @@ class AutarquicasParser:
 
                 if re.fullmatch(r"\[[A-Z]\]", raw_sigla):
                     placeholder_letter = raw_sigla.strip("[]")
+
                     if placeholder_letter in {"A", "B", "C"}:
                         if coalition_votes_seen < len(coalition_labels_ordered):
                             sigla = coalition_labels_ordered[coalition_votes_seen]
@@ -395,8 +525,10 @@ class AutarquicasParser:
                                 coalition_votes_seen += 1
                                 continue
                             sigla = f"SOURCE-COL-{placeholder_letter}-{territory_code}-{office_code}"
+
                         coalition_votes_seen += 1
                         entity_type = "coalition"
+
                     elif placeholder_letter in {"D", "E", "F", "G"}:
                         if gce_votes_seen < len(gce_labels_ordered):
                             sigla = gce_labels_ordered[gce_votes_seen]
@@ -405,16 +537,29 @@ class AutarquicasParser:
                                 gce_votes_seen += 1
                                 continue
                             sigla = f"SOURCE-GCE-{placeholder_letter}-{territory_code}-{office_code}"
+
                         gce_votes_seen += 1
                         entity_type = "gce"
+
                     else:
                         if vote_count == 0:
                             continue
                         sigla = f"SOURCE-OTHER-{placeholder_letter}-{territory_code}-{office_code}"
                         entity_type = "other"
+
                 else:
-                    sigla = raw_sigla
+                    sigla = normalize_sigla(raw_sigla)
+                    if not sigla:
+                        continue
                     entity_type = entity_type_for_sigla(sigla)
+
+                sigla = normalize_sigla(sigla)
+                if not sigla:
+                    continue
+
+                entity_type = entity_type_for_sigla(
+                    sigla, source_entity_type=entity_type
+                )
 
                 votes.append((sigla, entity_type, vote_count, display_order))
 
@@ -569,6 +714,11 @@ class LegislativasParser:
                 vote_count = as_int(self.sheet.cell(vote_row_no, col_idx).value)
                 if vote_count is None:
                     continue
+
+                sigla = normalize_sigla(sigla)
+                if not sigla:
+                    continue
+
                 votes.append(
                     (sigla, entity_type_for_sigla(sigla), vote_count, display_order)
                 )
@@ -628,6 +778,11 @@ class LegislativasParser:
                 seat_count = as_int(self.sheet.cell(seat_row_no, col_idx).value)
                 if seat_count is None or seat_count <= 0:
                     continue
+
+                sigla = normalize_sigla(sigla)
+                if not sigla:
+                    continue
+
                 yield ParsedSeat(
                     territory_code=territory_code,
                     office_code=LEGISLATIVE_OFFICE_CODE,
@@ -761,6 +916,9 @@ def save_official_seat(
     entity_type: str,
     seats: int,
 ) -> None:
+    sigla = canonical_sigla_for_election(sigla, election_code)
+    entity_type = entity_type_for_sigla(sigla)
+
     cur.execute(
         """
         WITH ctx AS (
@@ -905,6 +1063,11 @@ def main() -> None:
             )
 
             for sigla, entity_type, votes, display_order in pr.votes:
+                sigla = canonical_sigla_for_election(sigla, args.election_code)
+                entity_type = entity_type_for_sigla(
+                    sigla, source_entity_type=entity_type
+                )
+
                 cur.execute(
                     "SELECT op.save_candidacy_vote_result(%s,%s,%s,%s,%s,%s,%s,%s)",
                     (

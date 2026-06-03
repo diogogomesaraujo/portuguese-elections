@@ -29,10 +29,20 @@ def treemap_req(
     try:
         cursor.execute(
             """
-            SELECT sigla, votes
+            SELECT
+                sigla,
+                votes
             FROM wh.results_for_territory_parties(
-                %s::text, %s::integer, %s::text, %s::bigint
-            );
+                %s::text,
+                %s::integer,
+                %s::text,
+                %s::bigint
+            )
+            WHERE COALESCE(votes, 0) > 0
+            ORDER BY
+                wh.political_entity_order(sigla) ASC,
+                votes DESC,
+                sigla ASC;
             """,
             (
                 election_type,
@@ -110,7 +120,11 @@ def riseandfall_req(
                 variation_value,
                 variation_direction
             FROM wh.rise_and_fall(
-                %s::text, %s::text, %s::bigint, %s::text, %s::text
+                %s::text,
+                %s::text,
+                %s::bigint,
+                %s::text,
+                %s::text
             );
             """,
             (
@@ -391,159 +405,26 @@ def fetch_seat_distribution_rows(
     try:
         cursor.execute(
             """
-            WITH selected AS (
-                SELECT
-                    e.election_key,
-                    e.election_type,
-                    e.election_year,
-                    o.office_key,
-                    o.office_code
-                FROM wh.dim_election e
-                JOIN wh.dim_office o
-                  ON (
-                        lower(o.office_code) = lower(%s::text)
-                        OR lower(o.office_name) = lower(%s::text)
-                     )
-                WHERE lower(e.election_type) = lower(%s::text)
-                  AND e.election_year = %s::integer
-                LIMIT 1
-            ),
-
-            target AS (
-                SELECT
-                    t.territory_key,
-                    t.territory_code,
-                    t.territory_level,
-                    t.parent_code,
-                    parent.territory_code AS parent_territory_code,
-                    parent.territory_level AS parent_territory_level,
-                    grandparent.territory_code AS grandparent_territory_code,
-                    grandparent.territory_level AS grandparent_territory_level
-                FROM wh.dim_territory t
-                LEFT JOIN wh.dim_territory parent
-                  ON parent.territory_code = t.parent_code
-                LEFT JOIN wh.dim_territory grandparent
-                  ON grandparent.territory_code = parent.parent_code
-                WHERE t.territory_key = %s::bigint
-                LIMIT 1
-            ),
-
-            seat_territories AS (
-                SELECT
-                    vt.territory_key
-                FROM selected s
-                JOIN target tg ON true
-                JOIN wh.dim_territory vt
-                  ON vt.territory_level = 'district'
-                 AND (
-                        tg.territory_level = 'country'
-                        OR (
-                            tg.territory_level = 'district'
-                            AND vt.territory_code = tg.territory_code
-                        )
-                        OR (
-                            tg.territory_level = 'municipality'
-                            AND vt.territory_code = tg.parent_code
-                        )
-                        OR (
-                            tg.territory_level = 'parish'
-                            AND vt.territory_code = tg.grandparent_territory_code
-                        )
-                     )
-                WHERE lower(s.election_type) = 'legislativas'
-                   OR upper(s.office_code) = 'AR'
-
-                UNION ALL
-
-                SELECT
-                    vt.territory_key
-                FROM selected s
-                JOIN target tg ON true
-                JOIN wh.dim_territory vt
-                  ON vt.territory_level = 'municipality'
-                 AND (
-                        tg.territory_level = 'country'
-                        OR (
-                            tg.territory_level = 'district'
-                            AND vt.parent_code = tg.territory_code
-                        )
-                        OR (
-                            tg.territory_level = 'municipality'
-                            AND vt.territory_code = tg.territory_code
-                        )
-                        OR (
-                            tg.territory_level = 'parish'
-                            AND vt.territory_code = tg.parent_code
-                        )
-                     )
-                WHERE upper(s.office_code) IN ('AM', 'CM')
-
-                UNION ALL
-
-                SELECT
-                    vt.territory_key
-                FROM selected s
-                JOIN target tg ON true
-                JOIN wh.dim_territory vt
-                  ON vt.territory_level = 'parish'
-                LEFT JOIN wh.dim_territory parent_municipality
-                  ON parent_municipality.territory_code = vt.parent_code
-                 AND parent_municipality.territory_level = 'municipality'
-                WHERE upper(s.office_code) = 'AF'
-                  AND (
-                        tg.territory_level = 'country'
-                        OR (
-                            tg.territory_level = 'district'
-                            AND parent_municipality.parent_code = tg.territory_code
-                        )
-                        OR (
-                            tg.territory_level = 'municipality'
-                            AND vt.parent_code = tg.territory_code
-                        )
-                        OR (
-                            tg.territory_level = 'parish'
-                            AND vt.territory_code = tg.territory_code
-                        )
-                      )
-
-                UNION ALL
-
-                SELECT
-                    vt.territory_key
-                FROM selected s
-                JOIN wh.dim_territory vt
-                  ON vt.territory_level = 'country'
-                 AND vt.territory_code = 'PT'
-                WHERE upper(s.office_code) IN ('PR', 'PE')
-            )
-
             SELECT
-                pe.sigla,
-                SUM(COALESCE(sr.seats, 0))::integer AS seats,
-                pe.color
-            FROM selected s
-            JOIN seat_territories st
-              ON true
-            JOIN wh.fact_seat_result sr
-              ON sr.election_key = s.election_key
-             AND sr.office_key = s.office_key
-             AND sr.territory_key = st.territory_key
-            JOIN wh.dim_political_entity pe
-              ON pe.political_entity_key = sr.political_entity_key
-            WHERE COALESCE(sr.seats, 0) > 0
-            GROUP BY
-                pe.sigla,
-                pe.color
+                sigla,
+                seats,
+                color
+            FROM wh.results_for_territory_parties(
+                %s::text,
+                %s::integer,
+                %s::text,
+                %s::bigint
+            )
+            WHERE COALESCE(seats, 0) > 0
             ORDER BY
-                wh.political_entity_order(pe.sigla),
+                wh.political_entity_order(sigla) ASC,
                 seats DESC,
-                pe.sigla ASC;
+                sigla ASC;
             """,
             (
-                office,
-                office,
                 election_type,
                 election_year,
+                office,
                 territory_key,
             ),
         )
@@ -572,10 +453,16 @@ def fetch_elected_row(
                 votes,
                 color
             FROM wh.results_for_territory_parties(
-                %s::text, %s::integer, %s::text, %s::bigint
+                %s::text,
+                %s::integer,
+                %s::text,
+                %s::bigint
             )
             WHERE COALESCE(votes, 0) > 0
-            ORDER BY votes DESC
+            ORDER BY
+                votes DESC,
+                wh.political_entity_order(sigla) ASC,
+                sigla ASC
             LIMIT 1;
             """,
             (
@@ -617,7 +504,7 @@ def parliament_svg(
     diff = total_seats - sum(points_per_row)
     points_per_row[-1] += diff
 
-    seat_positions = []
+    seat_positions: list[tuple[float, float]] = []
 
     for radius, count in zip(radii, points_per_row):
         if count <= 1:
@@ -686,11 +573,8 @@ def square_bar_svg(
     title: str,
     y_title: str,
 ) -> str:
-    items = sorted(
-        zip(parties, values, colors),
-        key=lambda item: item[1],
-        reverse=True,
-    )[:20]
+    # Keep SQL order. Do not sort by value here.
+    items = list(zip(parties, values, colors))[:20]
 
     parties = [item[0] for item in items]
     values = [item[1] for item in items]

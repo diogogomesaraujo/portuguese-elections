@@ -116,11 +116,8 @@ vote_territories AS (
     JOIN wh.dim_territory vt
       ON vt.territory_level = 'district'
      AND (
-            (
-                tg.territory_level = 'country'
-            )
-            OR
-            (
+            tg.territory_level = 'country'
+            OR (
                 tg.territory_level = 'district'
                 AND vt.territory_code =
                     CASE
@@ -129,8 +126,7 @@ vote_territories AS (
                         ELSE tg.territory_code
                     END
             )
-            OR
-            (
+            OR (
                 tg.territory_level = 'municipality'
                 AND vt.territory_code =
                     CASE
@@ -139,8 +135,7 @@ vote_territories AS (
                         ELSE tg.parent_code
                     END
             )
-            OR
-            (
+            OR (
                 tg.territory_level = 'parish'
                 AND vt.territory_code =
                     CASE
@@ -168,21 +163,16 @@ vote_territories AS (
     JOIN wh.dim_territory vt
       ON vt.territory_level = 'municipality'
      AND (
-            (
-                tg.territory_level = 'country'
-            )
-            OR
-            (
+            tg.territory_level = 'country'
+            OR (
                 tg.territory_level = 'district'
                 AND vt.parent_code = tg.territory_code
             )
-            OR
-            (
+            OR (
                 tg.territory_level = 'municipality'
                 AND vt.territory_code = tg.territory_code
             )
-            OR
-            (
+            OR (
                 tg.territory_level = 'parish'
                 AND vt.territory_code = tg.parent_code
             )
@@ -207,21 +197,16 @@ vote_territories AS (
     WHERE ex.exists_exact = false
       AND upper(s.office_code) = 'AF'
       AND (
-            (
-                tg.territory_level = 'country'
-            )
-            OR
-            (
+            tg.territory_level = 'country'
+            OR (
                 tg.territory_level = 'district'
                 AND parent_municipality.parent_code = tg.territory_code
             )
-            OR
-            (
+            OR (
                 tg.territory_level = 'municipality'
                 AND vt.parent_code = tg.territory_code
             )
-            OR
-            (
+            OR (
                 tg.territory_level = 'parish'
                 AND vt.territory_code = tg.territory_code
             )
@@ -274,7 +259,7 @@ official_seat_result AS (
         political_entity_key
 ),
 
-party_totals AS (
+raw_totals AS (
     SELECT
         s.election_key,
         s.election_type,
@@ -285,11 +270,12 @@ party_totals AS (
         tg.territory_key,
         tg.territory_level,
 
-        pe.political_entity_key,
-        pe.sigla,
-        pe.name,
-        pe.entity_type,
-        pe.color,
+        wh.canonical_political_entity_sigla(
+            s.election_type,
+            s.election_year,
+            s.office_code,
+            pe.sigla
+        ) AS canon_sigla,
 
         SUM(fvr.votes)::bigint AS votes,
 
@@ -324,11 +310,57 @@ party_totals AS (
         s.office_code,
         tg.territory_key,
         tg.territory_level,
-        pe.political_entity_key,
-        pe.sigla,
-        pe.name,
-        pe.entity_type,
-        pe.color
+        wh.canonical_political_entity_sigla(
+            s.election_type,
+            s.election_year,
+            s.office_code,
+            pe.sigla
+        )
+),
+
+party_totals AS (
+    SELECT
+        rt.election_key,
+        rt.election_type,
+        rt.election_year,
+        rt.office_key,
+        rt.office_code,
+
+        rt.territory_key,
+        rt.territory_level,
+
+        dpe.political_entity_key,
+        rt.canon_sigla AS sigla,
+        COALESCE(dpe.name, rt.canon_sigla) AS name,
+        COALESCE(dpe.entity_type, op.infer_political_entity_type(rt.canon_sigla, NULL)) AS entity_type,
+        COALESCE(
+            dpe.color,
+            CASE
+                WHEN op.infer_political_entity_type(rt.canon_sigla, NULL) = 'coalition' THEN '#6A8F83'
+                WHEN op.infer_political_entity_type(rt.canon_sigla, NULL) = 'gce' THEN '#5C7A70'
+                ELSE '#4F6B62'
+            END
+        ) AS color,
+
+        SUM(rt.votes)::bigint AS votes,
+        SUM(rt.calculated_seats)::integer AS calculated_seats,
+        SUM(rt.official_seats)::integer AS official_seats
+    FROM raw_totals rt
+    LEFT JOIN wh.dim_political_entity dpe
+      ON dpe.sigla = rt.canon_sigla
+    GROUP BY
+        rt.election_key,
+        rt.election_type,
+        rt.election_year,
+        rt.office_key,
+        rt.office_code,
+        rt.territory_key,
+        rt.territory_level,
+        dpe.political_entity_key,
+        rt.canon_sigla,
+        dpe.name,
+        dpe.entity_type,
+        dpe.color
 ),
 
 ranked AS (

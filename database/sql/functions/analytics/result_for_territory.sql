@@ -1,3 +1,4 @@
+
 DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text, text);
 DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text);
 DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, bigint, text);
@@ -66,7 +67,8 @@ WHERE
     (
         p_party_sigla IS NOT NULL
         AND (
-            r.political_entity_key = wp.political_entity_key
+            lower(r.sigla) = lower(p_party_sigla)
+            OR r.political_entity_key = wp.political_entity_key
             OR EXISTS (
                 SELECT 1
                 FROM wh.bridge_political_entity_member bpm

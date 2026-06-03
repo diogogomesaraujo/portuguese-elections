@@ -1,9 +1,9 @@
 DROP FUNCTION IF EXISTS wh.resolve_match_territory(text, text, text);
 
 CREATE OR REPLACE FUNCTION wh.resolve_match_territory(
-    p_parish_name       text,
+    p_parish_name text,
     p_municipality_name text,
-    p_district_name     text
+    p_district_name text
 )
 RETURNS TABLE (
     territory_key bigint
@@ -23,9 +23,9 @@ WITH candidates AS (
     WHERE p_parish_name IS NOT NULL
       AND p_municipality_name IS NOT NULL
       AND p_district_name IS NOT NULL
-      AND lower(parish.territory_name)       = lower(p_parish_name)
+      AND lower(parish.territory_name) = lower(p_parish_name)
       AND lower(municipality.territory_name) = lower(p_municipality_name)
-      AND lower(district.territory_name)     = lower(p_district_name)
+      AND lower(district.territory_name) = lower(p_district_name)
 
     UNION ALL
 
@@ -38,7 +38,7 @@ WITH candidates AS (
     WHERE p_municipality_name IS NOT NULL
       AND p_district_name IS NOT NULL
       AND lower(municipality.territory_name) = lower(p_municipality_name)
-      AND lower(district.territory_name)     = lower(p_district_name)
+      AND lower(district.territory_name) = lower(p_district_name)
 
     UNION ALL
 

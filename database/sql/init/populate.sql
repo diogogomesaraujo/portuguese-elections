@@ -88,6 +88,7 @@ ON CONFLICT (code) DO UPDATE SET
     updated_at = now();
 
 INSERT INTO op.political_entity(sigla, name, entity_type, color_hex) VALUES
+('AD',        'Aliança Democrática',                              'coalition', '#6A8F83'),
 ('PS',        'Partido Socialista',                                'party',     '#CF5BAD'),
 ('PPD/PSD',   'Partido Social Democrata',                          'party',     '#CF895B'),
 ('CH',        'Chega',                                             'party',     '#5B6BCF'),
