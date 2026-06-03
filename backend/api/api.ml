@@ -198,7 +198,7 @@ module Api = struct
   end
 
   module Plot = struct
-    let req ~name ~microservice_uri =
+    let req_treemap ~name ~microservice_uri =
       Dream.get (Printf.sprintf "/%s/:type/:year/:office/:key" name)
         (fun req -> Dream.sql req (fun conn ->
           let module Conn = (val conn : Caqti_lwt.CONNECTION) in
@@ -225,9 +225,43 @@ module Api = struct
           |> Lwt.return
           ))
 
+    let req_rise_and_fall ~name ~microservice_uri =
+      Dream.get (Printf.sprintf "/%s/:type/:office/:key/:metric/:direction" name)
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+
+          let election_type = Dream.param req "type"      |> Uri.pct_decode in
+          let office        = Dream.param req "office"    |> Uri.pct_decode in
+          let key           = Dream.param req "key"       |> Uri.pct_decode in
+          let metric        = Dream.param req "metric"    |> Uri.pct_decode in
+          let direction     = Dream.param req "direction" |> Uri.pct_decode in
+
+          let uri =
+            Printf.sprintf "%s/%s/%s/%s/%s/%s/%s"
+              microservice_uri name
+              (Req.to_param (election_type, false))
+              (Req.to_param (office, false))
+              (Req.to_param (key, false))
+              (Req.to_param (metric, false))
+              (Req.to_param (direction, false))
+          in
+
+          let%lwt res = Req.get ~uri in
+
+          `String res
+          |> Yojson.to_string
+          |> Dream.response ~headers
+          |> Lwt.return
+          ))
+
     let treemap =
-      req
+      req_treemap
         ~name: "treemap"
+        ~microservice_uri
+
+    let rise_and_fall =
+      req_rise_and_fall
+        ~name: "riseandfall"
         ~microservice_uri
   end
 
@@ -268,6 +302,7 @@ module Api = struct
       ];
       Dream.scope "/plot" [Dream.memory_sessions] [
         Plot.treemap;
+        Plot.rise_and_fall;
       ];
       Dream.scope "/territory" [Dream.memory_sessions] [
         Territory.get;

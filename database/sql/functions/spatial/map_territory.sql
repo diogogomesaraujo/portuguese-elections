@@ -37,9 +37,9 @@ BEGIN
                          ELSE NULL
         END;
 
-    -- Adjust precision if territory level is 'country'
     IF v_level = 'country' THEN
         precision_value := precision_value * 300;
+        strokewidth := CAST(CAST(strokewidth AS bigint) * 20 AS text);
     END IF;
 
     WITH draw AS (

@@ -18,5 +18,5 @@ module Req = struct
       then
         Cohttp_lwt.Body.to_string body
       else
-        Lwt.return "upsie"
+        Lwt.return ""
 end

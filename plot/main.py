@@ -61,25 +61,38 @@ def treemap_req(
 
     labels = [str(r[0]) for r in rows]
     values = [int(r[1] or 0) for r in rows]
-    colors = [normalize_color(str(r[2] or "#999999")) for r in rows]
+    colors = [normalize_color(str(r[2] or "#B3C6BC")) for r in rows]
 
-    svg = treemap_svg(labels, values, colors)
+    svg = treemap_svg(
+        labels,
+        values,
+        colors,
+        title=f"Vote distribution — {election_type} {election_year}",
+    )
 
     return Response(content=svg, media_type="image/svg+xml")
 
 
-def treemap_svg(labels: list[str], values: list[int], colors: list[str]) -> str:
+def treemap_svg(
+    labels: list[str], values: list[int], colors: list[str], title: str
+) -> str:
     fig = go.Figure(
         go.Treemap(
             labels=labels,
             parents=[""] * len(labels),
             values=values,
-            marker=dict(colors=colors),
+            marker=dict(colors=colors, line=dict(color="#162620", width=1)),
         )
     )
 
     fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
+        title={
+            "text": title,
+            "x": 0.5,
+            "xanchor": "center",
+            "font": {"color": "#ECF5F0"},
+        },
+        margin=dict(l=0, r=0, t=50, b=0),
         paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
         plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
     )
@@ -95,7 +108,7 @@ def riseandfall_req(
     metric: str,
     direction: str,
 ):
-    election_type = unquote(election_type)
+    election_type = unquote(election_type).upper()
     office = unquote(office)
     metric = unquote(metric)
     direction = unquote(direction)
@@ -172,7 +185,7 @@ def riseandfall_req(
             for value in values
         ]
 
-        color = normalize_color(str(party_rows[0][3] or "#999999"))
+        color = normalize_color(str(party_rows[0][3] or "#B3C6BC"))
 
         fig.add_trace(
             go.Bar(
@@ -181,6 +194,8 @@ def riseandfall_req(
                 name=party,
                 text=labels,
                 marker_color=color,
+                marker_line_color="#162620",
+                marker_line_width=1,
             )
         )
 
@@ -189,6 +204,7 @@ def riseandfall_req(
         textposition="outside",
         hoverinfo="skip",
         hovertemplate=None,
+        textfont=dict(color="#B3C6BC"),
     )
 
     direction_label = "rising" if direction == "rise" else "falling"
@@ -200,9 +216,15 @@ def riseandfall_req(
             "text": f"Top {direction_label} parties by {metric_label}",
             "x": 0.5,
             "xanchor": "center",
+            "font": {"color": "#ECF5F0"},
         },
-        xaxis_title="Election year",
-        yaxis_title="Seats" if metric == "seats" else "Votes",
+        xaxis=dict(title="Election year", color="#B3C6BC", gridcolor="#162620"),
+        yaxis=dict(
+            title="Seats" if metric == "seats" else "Votes",
+            color="#B3C6BC",
+            gridcolor="#162620",
+        ),
+        legend=dict(font=dict(color="#B3C6BC")),
         showlegend=True,
         margin=dict(l=40, r=20, t=60, b=40),
         paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
@@ -258,7 +280,7 @@ def distribution_req(
 
         parties = [str(row[0]) for row in rows]
         seats = [int(row[1] or 0) for row in rows]
-        colors = [normalize_color(str(row[2] or "#999999")) for row in rows]
+        colors = [normalize_color(str(row[2] or "#B3C6BC")) for row in rows]
 
         svg = parliament_svg(
             parties=parties,
@@ -285,7 +307,7 @@ def distribution_req(
 
         party = str(row[0])
         votes = int(row[1] or 0)
-        color = normalize_color(str(row[2] or "#999999"))
+        color = normalize_color(str(row[2] or "#B3C6BC"))
 
         svg = elected_svg(
             party=party,
@@ -311,7 +333,7 @@ def distribution_req(
 
     parties = [str(row[0]) for row in rows]
     seats = [int(row[1] or 0) for row in rows]
-    colors = [normalize_color(str(row[2] or "#999999")) for row in rows]
+    colors = [normalize_color(str(row[2] or "#B3C6BC")) for row in rows]
 
     svg = square_bar_svg(
         parties=parties,
@@ -537,7 +559,7 @@ def parliament_svg(
                 marker=dict(
                     size=12,
                     color=color,
-                    line=dict(width=1, color="white"),
+                    line=dict(width=1, color="#162620"),
                 ),
                 hoverinfo="skip",
             )
@@ -548,14 +570,18 @@ def parliament_svg(
             "text": title,
             "x": 0.5,
             "xanchor": "center",
+            "font": {"color": "#ECF5F0"},
         },
+        legend=dict(font=dict(color="#B3C6BC")),
         showlegend=True,
         polar=dict(
-            bgcolor="white",
+            bgcolor="rgba(0,0,0,0)",
             radialaxis=dict(visible=False),
             angularaxis=dict(visible=False),
         ),
         margin=dict(l=20, r=20, t=70, b=20),
+        paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
+        plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
         height=600,
         width=900,
     )
@@ -588,7 +614,7 @@ def square_bar_svg(
                 text=[value],
                 marker_color=color,
                 marker_line_width=1,
-                marker_line_color="white",
+                marker_line_color="#162620",
             )
         )
 
@@ -598,6 +624,7 @@ def square_bar_svg(
         hoverinfo="skip",
         hovertemplate=None,
         width=0.65,
+        textfont=dict(color="#B3C6BC"),
     )
 
     fig.update_layout(
@@ -605,9 +632,10 @@ def square_bar_svg(
             "text": title,
             "x": 0.5,
             "xanchor": "center",
+            "font": {"color": "#ECF5F0"},
         },
-        xaxis_title="Party",
-        yaxis_title=y_title,
+        xaxis=dict(title="Party", color="#B3C6BC", gridcolor="#162620"),
+        yaxis=dict(title=y_title, color="#B3C6BC", gridcolor="#162620"),
         showlegend=False,
         margin=dict(l=40, r=20, t=70, b=80),
         paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
@@ -633,13 +661,13 @@ def elected_svg(
             marker=dict(
                 size=90,
                 color=color,
-                line=dict(width=3, color="white"),
+                line=dict(width=3, color="#162620"),
             ),
             text=[party],
             textposition="middle center",
             textfont=dict(
                 size=22,
-                color="white",
+                color="#ECF5F0",
             ),
             hoverinfo="skip",
         )
@@ -652,7 +680,7 @@ def elected_svg(
         showarrow=False,
         font=dict(
             size=18,
-            color="#333333",
+            color="#B3C6BC",
         ),
     )
 
@@ -661,6 +689,7 @@ def elected_svg(
             "text": title,
             "x": 0.5,
             "xanchor": "center",
+            "font": {"color": "#ECF5F0"},
         },
         xaxis=dict(
             visible=False,
@@ -670,8 +699,8 @@ def elected_svg(
             visible=False,
             range=[-1, 1],
         ),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
         margin=dict(l=20, r=20, t=70, b=20),
         height=420,
@@ -700,13 +729,13 @@ def normalize_color(color: str) -> str:
         a = int(color[7:9], 16) / 255
         return f"rgba({r},{g},{b},{a})"
 
-    return "#999999"
+    return "#B3C6BC"
 
 
 def svg_message(message: str) -> str:
     return f"""
     <svg xmlns="http://www.w3.org/2000/svg" width="900" height="300">
-        <rect width="100%" height="100%" fill="white"/>
-        <text x="40" y="150" font-size="24" fill="black">{message}</text>
+        <rect width="100%" height="100%" fill="transparent"/>
+        <text x="40" y="150" font-size="24" fill="#ECF5F0">{message}</text>
     </svg>
     """

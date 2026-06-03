@@ -143,16 +143,8 @@ end
   end
 
   module PlotType = struct
-    type t =
-      | Treemap
-      [@@deriving sexp, equal]
-
-    let uri_of ~uri ~election_type ~election_year ~office ~territory_code ~t =
-      let base =
-        match t with
-        | Treemap -> uri ^ "/plot/treemap"
-      in
-
+    let uri_of_treemap ~uri ~election_type ~election_year ~office ~territory_code =
+      let base = uri ^ "/plot/treemap" in
       Printf.sprintf
         "%s/%s/%s/%s/%s"
         base
@@ -160,6 +152,22 @@ end
         election_year
         office
         territory_code
+
+    let uri_of_rise_and_fall ~uri ~election_type ~office ~territory_code =
+      let base = uri ^ "/plot/riseandfall" in
+
+      let base_with_args = Printf.sprintf
+        "%s/%s/%s/%s"
+        base
+        election_type
+        office
+        territory_code
+      in
+
+      base_with_args ^ "/votes/rise",
+      base_with_args ^ "/votes/fall",
+      base_with_args ^ "/seats/rise",
+      base_with_args ^ "/seats/fall"
   end
 
   module Territory = struct
@@ -187,7 +195,7 @@ end
       let res =
         match res with
         | Ok res -> res
-        | _ -> "upsie"
+        | _ -> ""
       in
 
       match Yojson.Safe.from_string res with
@@ -298,7 +306,7 @@ end
       make ~uri: map_uri ()
     in
 
-    let plot_uri =
+    let treemap_uri =
       let%map territory_state = territory_state
       and field_options_state = field_options_state
       and form = form in
@@ -313,17 +321,74 @@ end
           not_selected
       in
 
-      PlotType.uri_of
+      PlotType.uri_of_treemap
         ~uri
         ~election_type: f.election_type
         ~election_year: f.election_year
         ~office
         ~territory_code: territory_state.code
-        ~t: Treemap
     in
 
-    let%sub plot =
-      make ~uri: plot_uri ()
+    let%sub treemap =
+      make ~uri: treemap_uri ()
+    in
+
+    let rise_and_fall_uris =
+      let%map territory_state = territory_state
+      and field_options_state = field_options_state
+      and form = form in
+      let f = F.value form |> Or_error.ok_exn in
+
+      let office =
+        match List.find field_options_state.offices
+          ~f:(fun (n, c) -> String.equal n f.office) with
+        | Some (name, code) ->
+          code
+        | None              ->
+          not_selected
+      in
+
+      PlotType.uri_of_rise_and_fall
+        ~uri
+        ~election_type: f.election_type
+        ~office
+        ~territory_code: territory_state.code
+    in
+
+    let rise_votes_uri =
+      let%map vr, _vf, _sr, _sf = rise_and_fall_uris in
+      vr
+    in
+
+    let rise_seats_uri =
+      let%map _vr, vf, _sr, _sf = rise_and_fall_uris in
+      vf
+    in
+
+    let fall_votes_uri =
+      let%map _vr, _vf, sr, _sf = rise_and_fall_uris in
+      sr
+    in
+
+    let fall_seats_uri =
+      let%map _vr, _vf, _sr, sf = rise_and_fall_uris in
+      sf
+    in
+
+    let%sub rise_votes =
+      make ~uri: rise_votes_uri ()
+    in
+
+    let%sub rise_seats =
+      make ~uri: rise_seats_uri ()
+    in
+
+    let%sub fall_votes =
+      make ~uri: fall_votes_uri ()
+    in
+
+    let%sub fall_seats =
+      make ~uri: fall_seats_uri ()
     in
 
     let%sub () = Bonsai.Edge.on_change'
@@ -371,17 +436,25 @@ end
       and set_territory = set_territory
       and territory_state = territory_state
       and map = map
-      and plot = plot
+      and treemap = treemap
+      and rise_votes = rise_votes
+      and rise_seats = rise_seats
+      and fall_votes = fall_votes
+      and fall_seats = fall_seats
     in
 
     Vdom.Node.div
-      [ h1 [text "\\dt portuguese_elections.*"]
+      [ h1 [ text "\\dt portuguese_elections.*" ]
       ; F.view_as_vdom form
       (* ;  Vdom.Node.button
         ~attrs: [Vdom.Attr.on_click (fun _ ->
                                       set_territory territory_state)]
           [ Vdom.Node.text "Query" ] *)
       ; map
-      ; plot
+      ; h2 [ text "Data Analysis" ]
+      ; h3 [ text "General" ]
+      ; treemap
+      ; h3 [ text "Multi-year" ]
+      ; rise_votes ; rise_seats ; fall_votes ; fall_seats
       ]
 end
