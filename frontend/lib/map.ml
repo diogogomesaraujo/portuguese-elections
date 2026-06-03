@@ -20,7 +20,7 @@ module Map = struct
       ; parishes:       string list
       ; election_years: string list
       ; election_types: string list
-      ; offices:        string list }
+      ; offices:        (string * string) list }
       [@@deriving sexp, equal]
 
     let default =
@@ -29,7 +29,7 @@ module Map = struct
       ; parishes       = [not_selected]
       ; election_years = [not_selected]
       ; election_types = [not_selected]
-      ; offices        = [not_selected] }
+      ; offices        = [not_selected, not_selected] }
 
     let rec consume : Yojson.Safe.t -> string = function
       | `String s -> s
@@ -50,6 +50,27 @@ module Map = struct
         | _ -> []
         )
       | _ -> []) |> Effect.return
+
+    let offices ~uri =
+      let%bind.Effect res =
+        Bonsai_web.Effect.of_deferred_fun
+          (fun uri -> Api.get ~uri ()) uri in
+
+      [not_selected, not_selected] @ (match res with
+      | Ok res ->
+        (match Yojson.Safe.from_string res with
+        | `List [`List names; `List codes] ->
+          (match List.map2
+            names codes
+            ~f: (fun name code -> name |> consume, code |> consume) with
+          | Unequal_lengths -> []
+          | Ok l -> l)
+        | _ -> []
+        )
+      | _ -> []) |> Effect.return
+
+    let office_names l =
+      List.map l ~f:(fun (name, _) -> name)
 end
 
   module Selected = struct
@@ -102,7 +123,7 @@ end
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
-                  field_options.offices)
+                  field_options.offices |> FieldOptions.office_names)
             | Typed_field.Election_type ->
               F.Elements.Dropdown.list
                 (module String)
@@ -224,7 +245,7 @@ end
       in
 
       let%bind.Effect offices =
-        FieldOptions.all ~uri: (uri ^ "/election/offices/"
+        FieldOptions.offices ~uri: (uri ^ "/election/offices/"
                             ^ String.lowercase form_state.election_type)
       in
 
@@ -232,7 +253,7 @@ end
         { districts
         ; municipalities
         ; parishes
-        ; offices
+        ; offices = offices
         ; election_years
         ; election_types }
     in
