@@ -29,16 +29,16 @@ module Elections = struct
       Printf.sprintf
         "
         SELECT DISTINCT
-            lower(o.office_name)
+            lower(o.office_name), o.office_code
         FROM wh.fact_turnout ft
-        JOIN wh.dim_election e
-          ON e.election_key = ft.election_key
-        JOIN wh.dim_office o
-          ON o.office_key = ft.office_key
+                 JOIN wh.dim_election e
+                      ON e.election_key = ft.election_key
+                 JOIN wh.dim_office o
+                      ON o.office_key = ft.office_key
         WHERE lower(e.election_type) = lower('%s')
         ORDER BY lower(o.office_name);
         "
         election_type
     in
-    Caqti_type.(unit ->* string) query
+    Caqti_type.(unit ->* t2 string string) query
 end
