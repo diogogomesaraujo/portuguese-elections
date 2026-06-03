@@ -71,6 +71,24 @@ module Api = struct
       | Error e -> Yojson.to_string (`List [])
         |> Dream.response ~headers
         |> Lwt.return
+
+    let list_t2 = function
+      | Ok res ->
+        let (l1, l2) =
+          List.fold_left
+            (fun (acc1, acc2) (e1, e2) ->
+              ( acc1 @ [`String e1]
+              , acc2 @ [`String e2]))
+            ([], [])
+            res
+        in
+        `List [`List l1; `List l2]
+        |> Yojson.to_string
+        |> Dream.response ~headers
+        |> Lwt.return
+      | Error e -> Yojson.to_string (`List [])
+        |> Dream.response ~headers
+        |> Lwt.return
   end
 
   module Regions = struct
@@ -112,6 +130,15 @@ module Api = struct
           list result)
         )
 
+    let req_2 ~name ~arg ~regions =
+      Dream.get (Printf.sprintf "/%s/:%s" name arg)
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+          let typ = Dream.param req arg in
+          let%lwt res = Conn.collect_list (regions typ) () in
+          Response.list_t2 res)
+        )
+
     let types =
       req
         ~name: "types"
@@ -127,11 +154,11 @@ module Api = struct
         ~list: Response.list
 
     let office =
-      req
+      req_2
         ~name: "offices"
         ~arg:  "election_type"
         ~regions: Elections.offices
-        ~list: Response.list
+
   end
 
   module Map = struct
@@ -172,14 +199,14 @@ module Api = struct
 
   module Plot = struct
     let req ~name ~microservice_uri =
-      Dream.get (Printf.sprintf "/%s/:type/:year/:office/:t_code" name)
+      Dream.get (Printf.sprintf "/%s/:type/:year/:office/:key" name)
         (fun req -> Dream.sql req (fun conn ->
           let module Conn = (val conn : Caqti_lwt.CONNECTION) in
 
           let election_type = Dream.param req "type"    |> Uri.pct_decode in
           let election_year = Dream.param req "year"    |> Uri.pct_decode in
           let office        = Dream.param req "office"  |> Uri.pct_decode in
-          let t_code        = Dream.param req "t_code"  |> Uri.pct_decode in
+          let key           = Dream.param req "key"  |> Uri.pct_decode in
 
           let uri =
             Printf.sprintf "%s/%s/%s/%s/%s/%s"
@@ -187,7 +214,7 @@ module Api = struct
               (Req.to_param (election_type, false))
               (Req.to_param (election_year, false))
               (Req.to_param (office, false))
-              (Req.to_param (t_code, false))
+              (Req.to_param (key, false))
           in
 
           let%lwt res = Req.get ~uri in
