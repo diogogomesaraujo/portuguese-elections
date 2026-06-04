@@ -139,7 +139,7 @@ end
                 (module String)
                 (let%map field_options = field_options in
                   List.map field_options.election_types ~f)
-                ~to_string:f
+                ~to_string:String.capitalize
 
             | Typed_field.Election_year ->
               F.Elements.Dropdown.list
@@ -349,7 +349,7 @@ end
       PlotType.uri_of
         ~uri
         ~name: "abstention"
-        ~election_type: f.election_type
+        ~election_type: (String.uppercase f.election_type)
         ~election_year: f.election_year
         ~office
         ~territory_code: territory_state.code
