@@ -588,7 +588,44 @@ class AutarquicasParser:
 
 
 class LegislativasParser:
-    """Parser for CNE AR matrix workbooks like 2022ar_quadro_resultados.xlsx."""
+    """Parser for CNE AR matrix workbooks.
+
+    Supports two equivalent CNE layouts:
+
+    * ``circle_columns`` — circles spread across columns, parties/metrics down
+      rows (e.g. 2019/2022/2024/2025 ``*ar_quadro_resultados`` workbooks).
+    * ``circle_rows`` — circles spread down rows, metrics/parties as column
+      groups of ``Número`` / ``Percentagem`` / ``md`` (e.g.
+      ``2015ar_quadro_resultados``).
+    """
+
+    METRIC_LABELS = {"INSCRITOS", "VOTANTES", "BRANCOS", "NULOS"}
+
+    # circle_columns: row labels that are not party vote rows.
+    NON_PARTY_ROWS = {
+        "INSCRITOS",
+        "VOTANTES",
+        "VOTANTES(VTT)",
+        "ABSTENCAO",
+        "ABSTENÇÃO",
+        "BRANCOS",
+        "NULOS",
+        "VOTOSVAL.EXP.(VVE)",
+        "VOTOSVALEXP.(VVE)",
+        "VOTOSVALIDAMENTEEXPRESSOS",
+    }
+
+    # circle_rows: leftmost two columns hold the circle code/name; trailing
+    # notes columns are not candidacies.
+    CIRCLE_ID_COLS = 2
+    NON_PARTY_GROUP_LABELS = {
+        "OBS",
+        "OBS.",
+        "OBSERVACOES",
+        "OBSERVACAO",
+        "CIRCULO",
+        "CIRCULOS ELEITORAIS",
+    }
 
     def __init__(self, path: Path, sheet_name: str | None = None):
         if path.suffix.lower() == ".xls":
@@ -604,9 +641,41 @@ class LegislativasParser:
             else self.workbook[self.workbook.sheetnames[0]]
         )
         self.sheet_name = self.sheet.title
-        self.circle_header_row = self.detect_circle_header_row()
-        self.circle_name_row = self.circle_header_row + 1
 
+        self.layout = self.detect_layout()
+        if self.layout == "circle_columns":
+            self.circle_header_row = self.detect_circle_header_row()
+            self.circle_name_row = self.circle_header_row + 1
+        else:
+            self.group_header_row = self.detect_group_header_row()
+            self.subheader_row = self.group_header_row + 1
+            self.data_start_row = self.subheader_row + 1
+            self.group_headers = [
+                clean_text(c.value) for c in self.sheet[self.group_header_row]
+            ]
+            self.subheaders = [
+                clean_text(c.value) for c in self.sheet[self.subheader_row]
+            ]
+            self.register_col: int | None = None
+            self.voters_col: int | None = None
+            self.blank_col: int | None = None
+            self.null_col: int | None = None
+            # (sigla, votes_col, seats_col_or_None, display_order)
+            self.party_cols: list[tuple[str, int, int | None, int]] = []
+            self.build_column_map()
+
+    def detect_layout(self) -> Literal["circle_columns", "circle_rows"]:
+        for row_no in range(1, min(self.sheet.max_row, 20) + 1):
+            row_values = [normalize_header_text(c.value) for c in self.sheet[row_no]]
+            if "CIRCULO" in row_values or "CÍRCULO" in row_values:
+                return "circle_columns"
+            if self.METRIC_LABELS.issubset(set(row_values)):
+                return "circle_rows"
+        raise RuntimeError(
+            f"Could not detect legislative layout in sheet {self.sheet_name}."
+        )
+
+    # ---------------- circle_columns ----------------
     def detect_circle_header_row(self) -> int:
         for row_no in range(1, min(self.sheet.max_row, 20) + 1):
             row_values = [normalize_header_text(c.value) for c in self.sheet[row_no]]
@@ -665,7 +734,22 @@ class LegislativasParser:
 
         raise RuntimeError(f"Could not find required metric row among {labels!r}.")
 
-    def parse_rows(self) -> Iterable[ParsedRow]:
+    def party_vote_rows(self) -> list[tuple[int, str]]:
+        rows: list[tuple[int, str]] = []
+        for row_no in range(1, self.sheet.max_row + 1):
+            sigla = normalize_sigla(self.sheet.cell(row_no, 1).value)
+            metric = normalize_header_text(self.sheet.cell(row_no, 2).value)
+
+            if not sigla or metric != "NUMERO":
+                continue
+
+            if sigla in self.NON_PARTY_ROWS:
+                continue
+
+            rows.append((row_no, sigla))
+        return rows
+
+    def parse_rows_circle_columns(self) -> Iterable[ParsedRow]:
         circle_cols = self.circle_columns()
         registered_by_code = self.metric_value_by_labels(["Inscritos"], circle_cols)
         voters_by_code = self.metric_value_by_labels(
@@ -674,33 +758,7 @@ class LegislativasParser:
         blank_by_code = self.metric_value_by_labels(["Brancos"], circle_cols)
         null_by_code = self.metric_value_by_labels(["Nulos"], circle_cols)
 
-        party_vote_rows: list[tuple[int, str]] = []
-
-        non_party_rows = {
-            "INSCRITOS",
-            "VOTANTES",
-            "VOTANTES(VTT)",
-            "ABSTENCAO",
-            "ABSTENÇÃO",
-            "BRANCOS",
-            "NULOS",
-            "VOTOSVAL.EXP.(VVE)",
-            "VOTOSVALEXP.(VVE)",
-            "VOTOSVALIDAMENTEEXPRESSOS",
-        }
-
-        for row_no in range(1, self.sheet.max_row + 1):
-            sigla = normalize_sigla(self.sheet.cell(row_no, 1).value)
-            metric = normalize_header_text(self.sheet.cell(row_no, 2).value)
-
-            if not sigla or metric != "NUMERO":
-                continue
-
-            if sigla in non_party_rows:
-                continue
-
-            party_vote_rows.append((row_no, sigla))
-
+        party_vote_rows = self.party_vote_rows()
         if not party_vote_rows:
             raise RuntimeError("No legislative party vote rows found.")
 
@@ -741,36 +799,9 @@ class LegislativasParser:
                 raw={"circle_code": territory_code, "circle_name": territory_name},
             )
 
-    def parse_seats(self) -> Iterable[ParsedSeat]:
+    def parse_seats_circle_columns(self) -> Iterable[ParsedSeat]:
         circle_cols = self.circle_columns()
-        party_vote_rows: list[tuple[int, str]] = []
-
-        non_party_rows = {
-            "INSCRITOS",
-            "VOTANTES",
-            "VOTANTES(VTT)",
-            "ABSTENCAO",
-            "ABSTENÇÃO",
-            "BRANCOS",
-            "NULOS",
-            "VOTOSVAL.EXP.(VVE)",
-            "VOTOSVALEXP.(VVE)",
-            "VOTOSVALIDAMENTEEXPRESSOS",
-        }
-
-        for row_no in range(1, self.sheet.max_row + 1):
-            sigla = normalize_sigla(self.sheet.cell(row_no, 1).value)
-            metric = normalize_header_text(self.sheet.cell(row_no, 2).value)
-
-            if not sigla or metric != "NUMERO":
-                continue
-
-            if sigla in non_party_rows:
-                continue
-
-            party_vote_rows.append((row_no, sigla))
-
-        for vote_row_no, sigla in party_vote_rows:
+        for vote_row_no, sigla in self.party_vote_rows():
             seat_row_no = vote_row_no + 2
             if normalize_header_text(self.sheet.cell(seat_row_no, 2).value) != "MD":
                 continue
@@ -791,12 +822,185 @@ class LegislativasParser:
                     seats=seat_count,
                 )
 
+    # ---------------- circle_rows ----------------
+    def detect_group_header_row(self) -> int:
+        for row_no in range(1, min(self.sheet.max_row, 20) + 1):
+            row_values = {normalize_header_text(c.value) for c in self.sheet[row_no]}
+            if self.METRIC_LABELS.issubset(row_values):
+                return row_no
+        raise RuntimeError(
+            f"Could not detect transposed legislative header row in sheet "
+            f"{self.sheet_name}."
+        )
+
+    def build_column_map(self) -> None:
+        # Group-header columns left-to-right; each non-empty cell starts a group
+        # that spans until the next non-empty group-header cell.
+        group_cols = [
+            (idx, header)
+            for idx, header in enumerate(self.group_headers, start=1)
+            if header
+        ]
+
+        display_order = 0
+        for position, (col_idx, header) in enumerate(group_cols):
+            next_col = (
+                group_cols[position + 1][0]
+                if position + 1 < len(group_cols)
+                else len(self.subheaders) + 2
+            )
+            label = normalize_header_text(header)
+
+            # Value column inside the group: the "Número" subheader, else the
+            # group-header column itself (Inscritos has no subheader).
+            value_col = col_idx
+            seats_col: int | None = None
+            for span_col in range(col_idx, next_col):
+                sub = normalize_header_text(
+                    self.subheaders[span_col - 1]
+                    if span_col - 1 < len(self.subheaders)
+                    else None
+                )
+                if sub == "NUMERO":
+                    value_col = span_col
+                elif sub == "MD":
+                    seats_col = span_col
+
+            if label == "INSCRITOS":
+                self.register_col = value_col
+            elif label == "VOTANTES":
+                self.voters_col = value_col
+            elif label == "BRANCOS":
+                self.blank_col = value_col
+            elif label == "NULOS":
+                self.null_col = value_col
+            else:
+                if col_idx <= self.CIRCLE_ID_COLS:
+                    continue
+                if label in self.NON_PARTY_GROUP_LABELS:
+                    continue
+                sigla = normalize_sigla(header)
+                if not sigla:
+                    continue
+                display_order += 1
+                self.party_cols.append((sigla, value_col, seats_col, display_order))
+
+        missing = [
+            name
+            for name, col in (
+                ("INSCRITOS", self.register_col),
+                ("VOTANTES", self.voters_col),
+                ("BRANCOS", self.blank_col),
+                ("NULOS", self.null_col),
+            )
+            if col is None
+        ]
+        if missing:
+            raise RuntimeError(
+                f"Missing turnout columns {missing!r} in sheet {self.sheet_name}."
+            )
+        if not self.party_cols:
+            raise RuntimeError("No legislative party columns found.")
+
+    @staticmethod
+    def cell_at(values: list[Any], col_idx: int | None) -> Any:
+        if col_idx is None:
+            return None
+        return values[col_idx - 1] if col_idx - 1 < len(values) else None
+
+    def circle_data_rows(self) -> Iterable[tuple[int, str, str, list[Any]]]:
+        for row_no, row in enumerate(
+            self.sheet.iter_rows(min_row=self.data_start_row, values_only=True),
+            start=self.data_start_row,
+        ):
+            values = list(row)
+            circle_no = as_int(values[0] if len(values) > 0 else None)
+            circle_name = clean_text(values[1] if len(values) > 1 else None)
+            if circle_no is None or not circle_name:
+                continue
+            if normalize_header_text(circle_name) == "TOTAL":
+                continue
+            yield row_no, f"{circle_no:02d}", circle_name, values
+
+    def parse_rows_circle_rows(self) -> Iterable[ParsedRow]:
+        for row_no, territory_code, territory_name, values in self.circle_data_rows():
+            registered = as_int(self.cell_at(values, self.register_col))
+            voters = as_int(self.cell_at(values, self.voters_col))
+            blank = as_int(self.cell_at(values, self.blank_col))
+            null = as_int(self.cell_at(values, self.null_col))
+            if registered is None or voters is None or blank is None or null is None:
+                continue
+
+            votes: list[tuple[str, str, int, int]] = []
+            for sigla, votes_col, _seats_col, display_order in self.party_cols:
+                vote_count = as_int(self.cell_at(values, votes_col))
+                if vote_count is None:
+                    continue
+                sigla = normalize_sigla(sigla)
+                if not sigla:
+                    continue
+                votes.append(
+                    (sigla, entity_type_for_sigla(sigla), vote_count, display_order)
+                )
+
+            yield ParsedRow(
+                row_no=row_no,
+                raw_code=territory_code,
+                territory_code=territory_code,
+                territory_level="district",
+                territory_name=territory_name,
+                parent_code="PT",
+                concelho=None,
+                freguesia=None,
+                office_code=LEGISLATIVE_OFFICE_CODE,
+                registered_voters=registered,
+                voters=voters,
+                blank_votes=blank,
+                null_votes=null,
+                votes=votes,
+                raw={"circle_code": territory_code, "circle_name": territory_name},
+            )
+
+    def parse_seats_circle_rows(self) -> Iterable[ParsedSeat]:
+        for _row_no, territory_code, _territory_name, values in self.circle_data_rows():
+            for sigla, _votes_col, seats_col, _display_order in self.party_cols:
+                if seats_col is None:
+                    continue
+                seat_count = as_int(self.cell_at(values, seats_col))
+                if seat_count is None or seat_count <= 0:
+                    continue
+                sigla = normalize_sigla(sigla)
+                if not sigla:
+                    continue
+                yield ParsedSeat(
+                    territory_code=territory_code,
+                    office_code=LEGISLATIVE_OFFICE_CODE,
+                    sigla=sigla,
+                    entity_type=entity_type_for_sigla(sigla),
+                    seats=seat_count,
+                )
+
+    # ---------------- dispatch ----------------
+    def parse_rows(self) -> Iterable[ParsedRow]:
+        if self.layout == "circle_columns":
+            yield from self.parse_rows_circle_columns()
+        else:
+            yield from self.parse_rows_circle_rows()
+
+    def parse_seats(self) -> Iterable[ParsedSeat]:
+        if self.layout == "circle_columns":
+            yield from self.parse_seats_circle_columns()
+        else:
+            yield from self.parse_seats_circle_rows()
+
 
 def detect_parser_mode(
     path: Path, sheet_name: str | None
 ) -> Literal["autarquicas", "legislativas"]:
     workbook = load_workbook(path, read_only=True, data_only=True)
     sheet = workbook[sheet_name] if sheet_name else workbook[workbook.sheetnames[0]]
+
+    metric_labels = {"INSCRITOS", "VOTANTES", "BRANCOS", "NULOS"}
 
     for row_no in range(1, min(sheet.max_row, 20) + 1):
         row_values = [normalize_header_text(c.value) for c in sheet[row_no]]
@@ -805,6 +1009,8 @@ def detect_parser_mode(
         ):
             return "autarquicas"
         if "CIRCULO" in row_values or "CÍRCULO" in row_values:
+            return "legislativas"
+        if metric_labels.issubset(set(row_values)):
             return "legislativas"
 
     raise RuntimeError(

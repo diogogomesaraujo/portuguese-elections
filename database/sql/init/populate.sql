@@ -55,6 +55,28 @@ ON CONFLICT (code) DO UPDATE SET
     updated_at = now();
 
 INSERT INTO op.election(election_type_id, code, name, election_date, election_year, source_name)
+SELECT election_type_id, 'LEGISLATIVAS_2015', 'Eleições Legislativas 2015', DATE '2015-10-04', 2015, 'CNE Quadro de Resultados AR 2015'
+FROM op.election_type
+WHERE code = 'LEGISLATIVAS'
+ON CONFLICT (code) DO UPDATE SET
+    name = EXCLUDED.name,
+    election_date = EXCLUDED.election_date,
+    election_year = EXCLUDED.election_year,
+    source_name = EXCLUDED.source_name,
+    updated_at = now();
+
+INSERT INTO op.election(election_type_id, code, name, election_date, election_year, source_name)
+SELECT election_type_id, 'LEGISLATIVAS_2019', 'Eleições Legislativas 2019', DATE '2019-10-06', 2019, 'CNE Quadro de Resultados AR 2019'
+FROM op.election_type
+WHERE code = 'LEGISLATIVAS'
+ON CONFLICT (code) DO UPDATE SET
+    name = EXCLUDED.name,
+    election_date = EXCLUDED.election_date,
+    election_year = EXCLUDED.election_year,
+    source_name = EXCLUDED.source_name,
+    updated_at = now();
+
+INSERT INTO op.election(election_type_id, code, name, election_date, election_year, source_name)
 SELECT election_type_id, 'LEGISLATIVAS_2022', 'Eleições Legislativas 2022', DATE '2022-01-30', 2022, 'CNE Quadro de Resultados AR 2022'
 FROM op.election_type
 WHERE code = 'LEGISLATIVAS'

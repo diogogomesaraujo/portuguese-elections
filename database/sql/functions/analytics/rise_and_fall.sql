@@ -1,5 +1,3 @@
-DROP FUNCTION IF EXISTS wh.rise_and_fall(text, text, text, text, text, text);
-DROP FUNCTION IF EXISTS wh.rise_and_fall(text, text, text, text, text);
 DROP FUNCTION IF EXISTS wh.rise_and_fall(text, text, bigint, text, text);
 
 CREATE OR REPLACE FUNCTION wh.rise_and_fall(
@@ -88,16 +86,47 @@ source_territories AS (
         )
 ),
 
-base AS (
+vote_rows AS (
     SELECT
+        e.election_key,
+        o.office_key,
         e.election_year,
-        pe.political_entity_key,
-        pe.sigla,
-        pe.name,
-        pe.color,
+        f.territory_key,
 
-        SUM(COALESCE(f.votes, 0))::bigint AS votes,
-        SUM(COALESCE(sr.seats, 0))::integer AS seats
+        CASE
+            WHEN pe.sigla IN (
+                'PPD/PSD.CDS-PP',
+                'PPD/PSD.CDS-PP.PPM',
+                'PPD/PSD.CDS-PP.PPM.IL',
+                'PPD/PSD.CDS-PP.PPM.MPT'
+            )
+            THEN 'PPD/PSD'
+            ELSE pe.sigla
+        END AS comparison_sigla,
+
+        CASE
+            WHEN pe.sigla IN (
+                'PPD/PSD.CDS-PP',
+                'PPD/PSD.CDS-PP.PPM',
+                'PPD/PSD.CDS-PP.PPM.IL',
+                'PPD/PSD.CDS-PP.PPM.MPT'
+            )
+            THEN 'Partido Social Democrata / coligações PSD'
+            ELSE pe.name
+        END AS comparison_name,
+
+        CASE
+            WHEN pe.sigla IN (
+                'PPD/PSD.CDS-PP',
+                'PPD/PSD.CDS-PP.PPM',
+                'PPD/PSD.CDS-PP.PPM.IL',
+                'PPD/PSD.CDS-PP.PPM.MPT'
+            )
+            THEN '#F28C00'
+            ELSE pe.color
+        END AS comparison_color,
+
+        SUM(COALESCE(f.votes, 0))::bigint AS votes
     FROM wh.fact_vote_result f
     JOIN wh.dim_election e
       ON e.election_key = f.election_key
@@ -105,24 +134,115 @@ base AS (
       ON o.office_key = f.office_key
     JOIN wh.dim_political_entity pe
       ON pe.political_entity_key = f.political_entity_key
-     AND pe.entity_type = 'party'
+     AND pe.entity_type IN ('party', 'coalition')
     JOIN source_territories st
       ON st.territory_key = f.territory_key
-    LEFT JOIN wh.fact_seat_result sr
-      ON sr.election_key = f.election_key
-     AND sr.office_key = f.office_key
-     AND sr.territory_key = f.territory_key
-     AND sr.political_entity_key = f.political_entity_key
     WHERE e.election_type = p_election_type
       AND o.office_code = p_office
       AND p_metric IN ('votes', 'seats')
       AND p_direction IN ('rise', 'fall')
     GROUP BY
+        e.election_key,
+        o.office_key,
         e.election_year,
-        pe.political_entity_key,
-        pe.sigla,
-        pe.name,
-        pe.color
+        f.territory_key,
+        CASE
+            WHEN pe.sigla IN (
+                'PPD/PSD.CDS-PP',
+                'PPD/PSD.CDS-PP.PPM',
+                'PPD/PSD.CDS-PP.PPM.IL',
+                'PPD/PSD.CDS-PP.PPM.MPT'
+            )
+            THEN 'PPD/PSD'
+            ELSE pe.sigla
+        END,
+        CASE
+            WHEN pe.sigla IN (
+                'PPD/PSD.CDS-PP',
+                'PPD/PSD.CDS-PP.PPM',
+                'PPD/PSD.CDS-PP.PPM.IL',
+                'PPD/PSD.CDS-PP.PPM.MPT'
+            )
+            THEN 'Partido Social Democrata / coligações PSD'
+            ELSE pe.name
+        END,
+        CASE
+            WHEN pe.sigla IN (
+                'PPD/PSD.CDS-PP',
+                'PPD/PSD.CDS-PP.PPM',
+                'PPD/PSD.CDS-PP.PPM.IL',
+                'PPD/PSD.CDS-PP.PPM.MPT'
+            )
+            THEN '#F28C00'
+            ELSE pe.color
+        END
+),
+
+seat_rows AS (
+    SELECT
+        e.election_key,
+        o.office_key,
+        e.election_year,
+        sr.territory_key,
+
+        CASE
+            WHEN pe.sigla IN (
+                'PPD/PSD.CDS-PP',
+                'PPD/PSD.CDS-PP.PPM',
+                'PPD/PSD.CDS-PP.PPM.IL',
+                'PPD/PSD.CDS-PP.PPM.MPT'
+            )
+            THEN 'PPD/PSD'
+            ELSE pe.sigla
+        END AS comparison_sigla,
+
+        SUM(COALESCE(sr.seats, 0))::integer AS seats
+    FROM wh.fact_seat_result sr
+    JOIN wh.dim_election e
+      ON e.election_key = sr.election_key
+    JOIN wh.dim_office o
+      ON o.office_key = sr.office_key
+    JOIN wh.dim_political_entity pe
+      ON pe.political_entity_key = sr.political_entity_key
+     AND pe.entity_type IN ('party', 'coalition')
+    JOIN source_territories st
+      ON st.territory_key = sr.territory_key
+    WHERE e.election_type = p_election_type
+      AND o.office_code = p_office
+    GROUP BY
+        e.election_key,
+        o.office_key,
+        e.election_year,
+        sr.territory_key,
+        CASE
+            WHEN pe.sigla IN (
+                'PPD/PSD.CDS-PP',
+                'PPD/PSD.CDS-PP.PPM',
+                'PPD/PSD.CDS-PP.PPM.IL',
+                'PPD/PSD.CDS-PP.PPM.MPT'
+            )
+            THEN 'PPD/PSD'
+            ELSE pe.sigla
+        END
+),
+
+base AS (
+    SELECT
+        vr.election_year,
+        vr.comparison_sigla,
+        MIN(vr.comparison_name)::text AS name,
+        MIN(vr.comparison_color)::text AS color,
+        SUM(vr.votes)::bigint AS votes,
+        SUM(COALESCE(sr.seats, 0))::integer AS seats
+    FROM vote_rows vr
+    LEFT JOIN seat_rows sr
+      ON sr.election_key = vr.election_key
+     AND sr.office_key = vr.office_key
+     AND sr.territory_key = vr.territory_key
+     AND sr.comparison_sigla = vr.comparison_sigla
+    GROUP BY
+        vr.election_year,
+        vr.comparison_sigla
 ),
 
 values_by_year AS (
@@ -141,12 +261,12 @@ ranked AS (
         v.*,
 
         row_number() OVER (
-            PARTITION BY v.political_entity_key
+            PARTITION BY v.comparison_sigla
             ORDER BY v.election_year ASC
         ) AS rn_first,
 
         row_number() OVER (
-            PARTITION BY v.political_entity_key
+            PARTITION BY v.comparison_sigla
             ORDER BY v.election_year DESC
         ) AS rn_last
     FROM values_by_year v
@@ -154,7 +274,8 @@ ranked AS (
 
 firsts AS (
     SELECT
-        political_entity_key,
+        comparison_sigla,
+        election_year AS first_election_year,
         metric_value AS first_value
     FROM ranked
     WHERE rn_first = 1
@@ -162,7 +283,8 @@ firsts AS (
 
 lasts AS (
     SELECT
-        political_entity_key,
+        comparison_sigla,
+        election_year AS last_election_year,
         metric_value AS last_value
     FROM ranked
     WHERE rn_last = 1
@@ -170,59 +292,47 @@ lasts AS (
 
 variation AS (
     SELECT
-        l.political_entity_key,
+        l.comparison_sigla,
+
+        f.first_election_year,
+        l.last_election_year,
 
         f.first_value,
         l.last_value,
 
         CASE
             WHEN p_direction = 'rise'
-            THEN (l.last_value - f.first_value)::numeric
-            ELSE (f.first_value - l.last_value)::numeric
+            THEN l.last_value - f.first_value
+            ELSE f.first_value - l.last_value
         END AS variation_value,
 
         CASE
             WHEN p_direction = 'rise'
              AND f.first_value > 0
-            THEN ((l.last_value - f.first_value) / f.first_value)::numeric
+            THEN (l.last_value - f.first_value) / f.first_value
 
             WHEN p_direction = 'fall'
              AND f.first_value > 0
-            THEN ((f.first_value - l.last_value) / f.first_value)::numeric
+            THEN (f.first_value - l.last_value) / f.first_value
 
             ELSE NULL
-        END AS proportional_variation,
-
-        CASE
-            WHEN p_direction = 'rise'
-             AND f.first_value > 0
-             AND l.last_value > 0
-            THEN ((l.last_value - f.first_value) / f.first_value) * sqrt(l.last_value)
-
-            WHEN p_direction = 'fall'
-             AND f.first_value > 0
-             AND l.last_value >= 0
-            THEN ((f.first_value - l.last_value) / f.first_value) * sqrt(f.first_value)
-
-            ELSE NULL
-        END AS variation_score
+        END AS proportional_variation
     FROM lasts l
     JOIN firsts f
-      ON f.political_entity_key = l.political_entity_key
+      ON f.comparison_sigla = l.comparison_sigla
+    WHERE f.first_election_year <> l.last_election_year
 ),
 
 top_parties AS (
     SELECT
-        v.political_entity_key,
+        v.comparison_sigla,
         v.variation_value,
-        v.proportional_variation,
-        v.variation_score
+        v.proportional_variation
     FROM variation v
     WHERE v.variation_value > 0
       AND v.proportional_variation IS NOT NULL
-      AND v.variation_score IS NOT NULL
     ORDER BY
-        v.variation_score DESC,
+        v.proportional_variation DESC,
         v.variation_value DESC
     LIMIT 4
 ),
@@ -230,7 +340,7 @@ top_parties AS (
 selected_rows AS (
     SELECT
         v.election_year,
-        v.sigla::text AS sigla,
+        v.comparison_sigla::text AS sigla,
         v.name::text AS name,
         v.color::text AS color,
         v.metric_value AS value,
@@ -238,11 +348,10 @@ selected_rows AS (
         v.seats,
         tp.variation_value,
         tp.proportional_variation,
-        tp.variation_score,
         p_direction::text AS variation_direction
     FROM values_by_year v
     JOIN top_parties tp
-      ON tp.political_entity_key = v.political_entity_key
+      ON tp.comparison_sigla = v.comparison_sigla
 )
 
 SELECT
@@ -259,6 +368,7 @@ SELECT
 FROM selected_rows sr
 ORDER BY
     sr.election_year ASC,
-    sr.variation_score DESC,
+    sr.proportional_variation DESC,
+    sr.variation_value DESC,
     sr.sigla ASC;
 $$;

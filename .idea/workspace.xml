@@ -2,9 +2,11 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="c6bcc8d8-bb29-46cd-9bdd-cc0df77b3c9d" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/political_entity_order.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/political_entity_order.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/map_territory.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/map_territory.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/data/converted/01-mapa_I_vf_r2.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/database/data/converted/01-mapa_I_vf_r2.xlsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/etl/import_election_results.py" beforeDir="false" afterPath="$PROJECT_DIR$/database/etl/import_election_results.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/run" beforeDir="false" afterPath="$PROJECT_DIR$/database/run" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/rise_and_fall.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/rise_and_fall.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/init/populate.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/init/populate.sql" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

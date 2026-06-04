@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-set -euo pipefail
 
 psql -d elections -v ON_ERROR_STOP=1 -f sql/init/reset.sql
 psql -d elections -v ON_ERROR_STOP=1 -f sql/init/extensions.sql
@@ -88,6 +86,28 @@ python3 etl/import_election_results.py \
   --layout legislativas \
   --skip-refresh
 
+/Applications/LibreOffice.app/Contents/MacOS/soffice --headless \
+  --convert-to xlsx \
+  --outdir data/converted \
+  "data/2015ar-quadro_resultados.xls"
+
+/Applications/LibreOffice.app/Contents/MacOS/soffice --headless \
+  --convert-to xlsx \
+  --outdir data/converted \
+  "data/ar2019-quadro-resultados.xls"
+
+python3 etl/import_election_results.py \
+  --file "data/converted/2015ar-quadro_resultados.xlsx" \
+  --election-code LEGISLATIVAS_2015 \
+  --layout legislativas \
+  --skip-refresh
+
+python3 etl/import_election_results.py \
+  --file "data/converted/ar2019-quadro-resultados.xlsx" \
+  --election-code LEGISLATIVAS_2019 \
+  --layout legislativas \
+  --skip-refresh
+
 # Enrich op.territory with geometry after all election territories exist.
 psql -d elections -v ON_ERROR_STOP=1 -c "CALL op.load_territories_from_spatial_data();"
 
@@ -169,6 +189,8 @@ WHERE e.code IN (
     'AUTARQUICAS_2017',
     'AUTARQUICAS_2021',
     'AUTARQUICAS_2025',
+    'LEGISLATIVAS_2015',
+    'LEGISLATIVAS_2019',
     'LEGISLATIVAS_2022',
     'LEGISLATIVAS_2024',
     'LEGISLATIVAS_2025'
@@ -194,6 +216,8 @@ WHERE e.code IN (
     'AUTARQUICAS_2017',
     'AUTARQUICAS_2021',
     'AUTARQUICAS_2025',
+    'LEGISLATIVAS_2015',
+    'LEGISLATIVAS_2019',
     'LEGISLATIVAS_2022',
     'LEGISLATIVAS_2024',
     'LEGISLATIVAS_2025'
@@ -331,7 +355,9 @@ WITH expected AS (
         VALUES
             ('LEGISLATIVAS_2022', 22::bigint, 5417715::bigint, 5564539::bigint, 63103::bigint, 83721::bigint, 230::bigint, 62::bigint),
             ('LEGISLATIVAS_2024', 22::bigint, 6194709::bigint, 6476952::bigint, 89847::bigint, 192396::bigint, 230::bigint, 77::bigint),
-            ('LEGISLATIVAS_2025', 22::bigint, 6059321::bigint, 6319969::bigint, 87654::bigint, 172994::bigint, 230::bigint, 76::bigint)
+            ('LEGISLATIVAS_2025', 22::bigint, 6059321::bigint, 6319969::bigint, 87654::bigint, 172994::bigint, 230::bigint, 76::bigint),
+            ('LEGISLATIVAS_2015', 22::bigint, 5206113::bigint, 5408092::bigint, 112955::bigint, 89024::bigint, 230::bigint, 62::bigint),
+            ('LEGISLATIVAS_2019', 22::bigint, 4982609::bigint, 5237484::bigint, 131302::bigint, 123573::bigint, 230::bigint, 66::bigint)
     ) AS x(
         election_code,
         expected_circles,
@@ -358,6 +384,8 @@ turnout_actual AS (
       ON tr.election_id = e.election_id
      AND tr.office_id = o.office_id
     WHERE e.code IN (
+        'LEGISLATIVAS_2015',
+        'LEGISLATIVAS_2019',
         'LEGISLATIVAS_2022',
         'LEGISLATIVAS_2024',
         'LEGISLATIVAS_2025'
@@ -376,6 +404,8 @@ vote_actual AS (
       ON vr.election_id = e.election_id
      AND vr.office_id = o.office_id
     WHERE e.code IN (
+        'LEGISLATIVAS_2015',
+        'LEGISLATIVAS_2019',
         'LEGISLATIVAS_2022',
         'LEGISLATIVAS_2024',
         'LEGISLATIVAS_2025'
@@ -399,6 +429,8 @@ seat_actual AS (
       ON sr.election_id = e.election_id
      AND sr.office_id = o.office_id
     WHERE e.code IN (
+        'LEGISLATIVAS_2015',
+        'LEGISLATIVAS_2019',
         'LEGISLATIVAS_2022',
         'LEGISLATIVAS_2024',
         'LEGISLATIVAS_2025'
@@ -420,6 +452,8 @@ turnout_math_errors AS (
     JOIN op.office o
       ON o.office_id = rs.office_id
     WHERE e.code IN (
+        'LEGISLATIVAS_2015',
+        'LEGISLATIVAS_2019',
         'LEGISLATIVAS_2022',
         'LEGISLATIVAS_2024',
         'LEGISLATIVAS_2025'
@@ -728,6 +762,8 @@ WITH checks AS (
       AND t.geom IS NULL
       AND NOT (
           e.code IN (
+              'LEGISLATIVAS_2015',
+              'LEGISLATIVAS_2019',
               'LEGISLATIVAS_2022',
               'LEGISLATIVAS_2024',
               'LEGISLATIVAS_2025'
