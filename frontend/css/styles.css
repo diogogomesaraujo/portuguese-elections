@@ -3,6 +3,7 @@
 
 body {
     background-color: #050d0e;
+    margin-top: 2vh;
 }
 
 button {
@@ -15,17 +16,12 @@ button {
 }
 
 select {
-    -webkit-appearance: none;
-    -moz-appearance: none;
+    appearance: none;
     margin-bottom: 0.2rem;
     color: #b3c6bc;
-    text-indent: 1%;
-    -moz-appearance: none;
-    appearance: none;
     background-color: #0f1a1d;
     border-color: #162620;
     border-radius: 2rem;
-    padding: 0.25rem 0.25rem;
 }
 
 select:focus {
@@ -45,7 +41,7 @@ h1 {
     padding-top: 0px;
     margin-top: 0px;
     margin-bottom: 0px;
-    font-size: 40px;
+    font-size: 36px;
 }
 
 h2 {
