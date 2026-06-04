@@ -1,4 +1,5 @@
 import math
+import re
 from urllib.parse import unquote
 
 import plotly.graph_objects as go
@@ -894,7 +895,7 @@ def abstention_svg(
             textinfo="none",
             hoverinfo="skip",
             showlegend=False,
-            domain=dict(x=[0.08, 0.92], y=[0.12, 0.88]),
+            domain=dict(x=[0.12, 0.88], y=[0.16, 0.86]),
         )
     )
 
@@ -923,7 +924,7 @@ def abstention_svg(
         y=0.97,
         xref="paper",
         yref="paper",
-        text="",
+        text="How many portuguese failed to go to the polls?",
         showarrow=False,
         font=dict(size=18, color="#ECF5F0"),
     )
@@ -934,18 +935,28 @@ def abstention_svg(
         xref="paper",
         yref="paper",
         text=(
-            f"Adoption {turnout_pct:.1f}% · Voted {voters:,} · Abstained {abstentions:,}"
+            f"Turnout {turnout_pct:.1f}% · Voted {voters:,} · Abstained {abstentions:,}"
         ),
         showarrow=False,
         font=dict(size=12, color="#B3C6BC"),
     )
 
     fig.update_layout(
-        width=700,
-        height=420,
+        width=550,
+        height=500,
         margin=dict(l=10, r=10, t=20, b=20),
         paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
         plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
     )
 
-    return fig.to_image(format="svg").decode("utf-8")
+    svg = fig.to_image(format="svg").decode("utf-8")
+    return tag_pct(svg)
+
+
+def tag_pct(svg: str) -> str:
+    return re.sub(
+        r'<text\b(?=[^>]*font-size[:=]\s*"?42)',
+        '<text id="abstention-pct" ',
+        svg,
+        count=1,
+    )
