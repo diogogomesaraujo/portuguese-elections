@@ -1,30 +1,54 @@
-
 psql -d elections -v ON_ERROR_STOP=1 -f sql/init/reset.sql
 psql -d elections -v ON_ERROR_STOP=1 -f sql/init/extensions.sql
 psql -d elections -v ON_ERROR_STOP=1 -f sql/schemas/operational.sql
 psql -d elections -v ON_ERROR_STOP=1 -f sql/init/populate.sql
 
-# Loads:
-# - op/init functions
-# - political_entity_order.sql
-# - spatial/svg functions
-#
+# op/init functions + political_entity_order + spatial + svg.
+# (was: sql/init/functions.sql)
 # Does NOT load WH analytics that depend on wh.fact_*.
-psql -d elections -v ON_ERROR_STOP=1 -f sql/init/functions.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/init/normalize_territory_name.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/init/validate_turnout_result.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/init/validate_vote_result.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/init/refresh_result_summary_for_context.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/init/refresh_result_summary_after_change.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/init/save_political_entity.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/init/save_turnout_result.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/init/save_candidacy_vote_result.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/political_entity_order.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/spatial/country.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/spatial/district_municipalities.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/spatial/municipality_parishes.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/spatial/parish.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/spatial/map_territory.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/svg.sql
 
-psql -d elections -v ON_ERROR_STOP=1 -f sql/init/triggers.sql
-psql -d elections -v ON_ERROR_STOP=1 -f sql/init/procedures.sql
+# Triggers.
+# (was: sql/init/triggers.sql)
+psql -d elections -v ON_ERROR_STOP=1 -f sql/triggers/territory_normalize_name.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/triggers/turnout_result_validate.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/triggers/vote_result_validate.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/triggers/turnout_result_refresh_summary.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/triggers/vote_result_refresh_summary.sql
+
+# Procedures.
+# (was: sql/init/procedures.sql)
+psql -d elections -v ON_ERROR_STOP=1 -f sql/procedures/populate_seat_count.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/procedures/calculate_seat_results.sql
 
 # WH tables + wh.refresh_wh().
 psql -d elections -v ON_ERROR_STOP=1 -f sql/schemas/warehouse.sql
 
-# Loads WH analytics functions AFTER warehouse tables exist:
-# - party_results
-# - results_for_territory_parties
-# - result_for_territory
-# - rise_and_fall
-# - territory resolvers
-psql -d elections -v ON_ERROR_STOP=1 -f sql/init/warehouse_functions.sql
+# WH analytics functions AFTER warehouse tables exist.
+# (was: sql/init/warehouse_functions.sql)
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/resolve_vote_territory.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/resolve_match_territory.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/get_political_side.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/party_results.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/results_for_territory_parties.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/result_for_territory.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/abstention_for_territory.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/rise_and_fall.sql
+psql -d elections -v ON_ERROR_STOP=1 -f sql/functions/analytics/vote_swing_by_territory.sql
 
 export DATABASE_URL='postgresql://localhost/elections'
 
