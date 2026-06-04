@@ -9,35 +9,35 @@ CREATE OR REPLACE FUNCTION wh.vote_swing_by_territory(
     p_territory_key bigint DEFAULT NULL
 )
     RETURNS TABLE (
-                      territory_key bigint,
-                      territory_code text,
-                      territory_name text,
-                      territory_level text,
+        territory_key bigint,
+        territory_code text,
+        territory_name text,
+        territory_level text,
 
-                      from_year integer,
-                      to_year integer,
+        from_year integer,
+        to_year integer,
 
-                      from_total_votes bigint,
-                      to_total_votes bigint,
+        from_total_votes bigint,
+        to_total_votes bigint,
 
-                      from_left_votes bigint,
-                      from_right_votes bigint,
-                      from_other_votes bigint,
+        from_left_votes bigint,
+        from_right_votes bigint,
+        from_other_votes bigint,
 
-                      to_left_votes bigint,
-                      to_right_votes bigint,
-                      to_other_votes bigint,
+        to_left_votes bigint,
+        to_right_votes bigint,
+        to_other_votes bigint,
 
-                      from_left_share numeric,
-                      from_right_share numeric,
-                      from_margin numeric,
+        from_left_share numeric,
+        from_right_share numeric,
+        from_margin numeric,
 
-                      to_left_share numeric,
-                      to_right_share numeric,
-                      to_margin numeric,
+        to_left_share numeric,
+        to_right_share numeric,
+        to_margin numeric,
 
-                      swing_value numeric,
-                      swing_direction text
+        swing_value numeric,
+        swing_direction text
                   )
     LANGUAGE sql
     STABLE
