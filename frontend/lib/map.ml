@@ -103,8 +103,6 @@ end
             |> String.capitalize
             |> String.substr_replace_all ~pattern:"_" ~with_:" ")
 
-          (* let f = (fun x -> x |> Ubase.from_utf8 |> String.uppercase) *)
-
           let f = Fn.id
 
           let form_for_field : type a. a Typed_field.t -> a F.t Computation.t = function
@@ -113,31 +111,42 @@ end
                 (module String)
                 (let%map field_options = field_options in
                   List.map field_options.districts ~f)
+                ~to_string:f
+
             | Typed_field.Municipality ->
               F.Elements.Dropdown.list
                 (module String)
               (let%map field_options = field_options in
                 List.map field_options.municipalities ~f)
+              ~to_string:f
+
             | Typed_field.Parish ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
                   List.map field_options.parishes ~f)
+                ~to_string:f
+
             | Typed_field.Office ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
                   field_options.offices |> FieldOptions.office_names |> List.map ~f)
+                ~to_string:f
+
             | Typed_field.Election_type ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
                   List.map field_options.election_types ~f)
+                ~to_string:f
+
             | Typed_field.Election_year ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
                   List.map field_options.election_years ~f)
+                ~to_string:f
           ;;
         end)
   end
@@ -472,6 +481,17 @@ end
         ~default: Selected.default
     in
 
+    let open Css_gen in
+
+    let box_style =
+      flex_container
+        ~direction: `Row
+        ~wrap: `Wrap()
+        ~justify_content: `Center
+      @> width (Length.percent100)
+      |> Vdom.Attr.style
+    in
+
     Vdom.Node.div
       [ h1 [ text "\\dt portuguese_elections.*" ]
       ; F.view_as_vdom form
@@ -482,8 +502,8 @@ end
       ; map
       ; h2 [ text "Data Analysis" ]
       ; h3 [ text (Printf.sprintf "Year-specific (%s)" v.election_year) ]
-      ; treemap; distribution
+      ; div [treemap; distribution] ~attrs: [box_style]
       ; h3 [ text "Multi-year" ]
-      ; rise_votes ; rise_seats ; fall_votes ; fall_seats
+      ; div [rise_votes ; rise_seats ; fall_votes ; fall_seats] ~attrs: [box_style]
       ]
 end
