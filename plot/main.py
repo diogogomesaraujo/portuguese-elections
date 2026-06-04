@@ -1,4 +1,6 @@
+import json
 import math
+import re
 from urllib.parse import unquote
 
 import plotly.graph_objects as go
@@ -161,6 +163,13 @@ def riseandfall_req(
     finally:
         cursor.close()
         conn.close()
+
+    if not rows:
+        district_key = fetch_district_key_for(territory_key)
+        if district_key is not None and district_key != territory_key:
+            rows = fetch_rise_and_fall(
+                election_type, office, district_key, metric, direction
+            )
 
     if not rows:
         return Response(
@@ -948,7 +957,17 @@ def abstention_svg(
         plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
     )
 
-    return fig.to_image(format="svg").decode("utf-8")
+    svg = fig.to_image(format="svg").decode("utf-8")
+    return tag_pct(svg)
+
+
+def tag_pct(svg: str) -> str:
+    return re.sub(
+        r'<text\b(?=[^>]*font-size[:=]\s*"?42)',
+        '<text id="abstention-pct" ',
+        svg,
+        count=1,
+    )
 
 
 @app.get("/swingmap/{election_type}/{office}/{territory_key}")
@@ -964,17 +983,22 @@ def swingmap_req(
     if parent_info is None:
         return Response(content="", media_type="image/svg+xml")
 
-    child_level = child_territory_level(parent_info["territory_level"])
-    if child_level is None:
-        return Response(content="", media_type="image/svg+xml")
-
     year_range = fetch_election_year_range(election_type, office)
     if year_range is None:
         return Response(content="", media_type="image/svg+xml")
 
     from_year, to_year = year_range
 
-    children = fetch_child_territories_with_geom(territory_key, child_level)
+    children = []
+    child_level = child_territory_level(parent_info["territory_level"])
+
+    if child_level is not None:
+        children = fetch_child_territories_with_geom(territory_key, child_level)
+
+    # Fallback: if there is no child level (e.g., parish) or no children found, use parent geom
+    if not children:
+        children = fetch_single_territory_with_geom(territory_key)
+
     if not children:
         return Response(content="", media_type="image/svg+xml")
 
@@ -1033,6 +1057,82 @@ def fetch_election_year_range(
             return None
 
         return int(row[0]), int(row[1])
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def fetch_district_key_for(territory_key: int) -> int | None:
+    info = fetch_territory_info(territory_key)
+
+    if info is None:
+        return None
+
+    if info["territory_level"].lower() == "district":
+        return territory_key
+
+    district_code = info["territory_code"][:2]
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT territory_key
+            FROM wh.dim_territory
+            WHERE territory_level = 'district'
+              AND territory_code = %s::text
+            LIMIT 1;
+            """,
+            (district_code,),
+        )
+
+        row = cursor.fetchone()
+
+        return int(row[0]) if row else None
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def fetch_rise_and_fall(
+    election_type: str,
+    office: str,
+    territory_key: int,
+    metric: str,
+    direction: str,
+):
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                election_year,
+                sigla,
+                name,
+                color,
+                value,
+                votes,
+                seats,
+                variation_value,
+                variation_direction
+            FROM wh.rise_and_fall(
+                %s::text,
+                %s::text,
+                %s::bigint,
+                %s::text,
+                %s::text
+            );
+            """,
+            (election_type, office, territory_key, metric, direction),
+        )
+
+        return cursor.fetchall()
 
     finally:
         cursor.close()
@@ -1160,8 +1260,6 @@ def swingmap_svg(
     to_year: int,
     parent_name: str,
 ) -> str:
-    import json
-
     LEFT_COLOUR = "#E63946"
     RIGHT_COLOUR = "#3A86FF"
     NEUTRAL_COLOUR = "#162327"
@@ -1277,3 +1375,48 @@ def swingmap_svg(
     )
 
     return fig.to_image(format="svg").decode("utf-8")
+
+
+def fetch_single_territory_with_geom(territory_key: int) -> list[dict]:
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                territory_key,
+                territory_code,
+                territory_name,
+                territory_level,
+                ST_X(ST_Centroid(geom)) AS centroid_x,
+                ST_Y(ST_Centroid(geom)) AS centroid_y,
+                ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.0001)) AS geojson
+            FROM wh.dim_territory
+            WHERE territory_key = %s::bigint
+              AND geom IS NOT NULL
+            LIMIT 1;
+            """,
+            (territory_key,),
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            return []
+
+        return [
+            {
+                "territory_key": int(row[0]),
+                "territory_code": str(row[1]),
+                "territory_name": str(row[2]),
+                "territory_level": str(row[3]),
+                "centroid_x": float(row[4]),
+                "centroid_y": float(row[5]),
+                "geojson": row[6],
+            }
+        ]
+
+    finally:
+        cursor.close()
+        conn.close()
