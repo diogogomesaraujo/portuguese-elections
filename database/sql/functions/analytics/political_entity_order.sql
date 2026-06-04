@@ -241,10 +241,6 @@ WITH s AS (
     SELECT op.normalized_sigla(p_sigla) AS sigla
 )
 SELECT CASE
-    /*
-      LEGISLATIVAS 2022:
-      National AR distribution displays PSD-led district coalition seats under PPD/PSD.
-    */
     WHEN p_election_type = 'LEGISLATIVAS'
      AND p_election_year = 2022
      AND p_office = 'AR'

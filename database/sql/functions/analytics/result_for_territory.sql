@@ -1,5 +1,3 @@
-DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text, text);
-DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, text, text);
 DROP FUNCTION IF EXISTS wh.result_for_territory(text, integer, text, bigint, text);
 
 CREATE OR REPLACE FUNCTION wh.result_for_territory(

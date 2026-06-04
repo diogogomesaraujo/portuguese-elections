@@ -1,5 +1,3 @@
-DROP FUNCTION IF EXISTS wh.party_results(text, integer, text, text, text);
-DROP FUNCTION IF EXISTS wh.party_results(text, integer, text, text);
 DROP FUNCTION IF EXISTS wh.party_results(text, integer, text, bigint);
 
 CREATE OR REPLACE FUNCTION wh.party_results(

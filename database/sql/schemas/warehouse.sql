@@ -246,13 +246,6 @@ CREATE OR REPLACE PROCEDURE wh.refresh_wh()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    /*
-      Keep ordering/member logic outside warehouse.sql.
-
-      If op.rebuild_political_entity_members() exists because
-      political_entity_order.sql was already loaded, use it.
-      If not, warehouse refresh still works with current OP data.
-    */
     IF to_regprocedure('op.rebuild_political_entity_members()') IS NOT NULL THEN
         CALL op.rebuild_political_entity_members();
     END IF;

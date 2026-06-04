@@ -2,11 +2,24 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="c6bcc8d8-bb29-46cd-9bdd-cc0df77b3c9d" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/database/data/converted/01-mapa_I_vf_r2.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/database/data/converted/01-mapa_I_vf_r2.xlsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/etl/import_election_results.py" beforeDir="false" afterPath="$PROJECT_DIR$/database/etl/import_election_results.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/run" beforeDir="false" afterPath="$PROJECT_DIR$/database/run" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/rise_and_fall.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/rise_and_fall.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/sql/init/populate.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/init/populate.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/data/converted/2015ar-quadro_resultados.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/database/data/converted/2015ar-quadro_resultados.xlsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/data/converted/ar2019-quadro-resultados.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/database/data/converted/ar2019-quadro-resultados.xlsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/get_political_side.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/get_political_side.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/party_results.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/party_results.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/political_entity_order.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/political_entity_order.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/resolve_vote_territory.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/resolve_vote_territory.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/result_for_territory.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/result_for_territory.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/analytics/results_for_territory_parties.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/analytics/results_for_territory_parties.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/country.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/country.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/district_municipalities.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/district_municipalities.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/map_territory.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/map_territory.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/municipality_parishes.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/municipality_parishes.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/functions/spatial/parish.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/functions/spatial/parish.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/sql/schemas/warehouse.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/sql/schemas/warehouse.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/plot/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/plot/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/todo" beforeDir="false" afterPath="$PROJECT_DIR$/todo" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

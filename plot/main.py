@@ -55,7 +55,7 @@ def treemap_req(
 
     if not rows:
         return Response(
-            content=svg_message("No data found"),
+            content="",
             media_type="image/svg+xml",
         )
 
@@ -156,7 +156,7 @@ def riseandfall_req(
 
     if not rows:
         return Response(
-            content=svg_message("No data found"),
+            content="",
             media_type="image/svg+xml",
         )
 
@@ -252,7 +252,7 @@ def distribution_req(
 
     if territory_info is None:
         return Response(
-            content=svg_message("Territory not found"),
+            content="",
             media_type="image/svg+xml",
         )
 
@@ -276,7 +276,7 @@ def distribution_req(
 
         if not rows:
             return Response(
-                content=svg_message("No seat distribution found"),
+                content="",
                 media_type="image/svg+xml",
             )
 
@@ -305,7 +305,7 @@ def distribution_req(
 
         if not row:
             return Response(
-                content=svg_message("No elected party found"),
+                content="",
                 media_type="image/svg+xml",
             )
 
@@ -333,7 +333,7 @@ def distribution_req(
 
     if not rows:
         return Response(
-            content=svg_message("Not found"),
+            content="",
             media_type="image/svg+xml",
         )
 
@@ -349,6 +349,62 @@ def distribution_req(
         colors=colors,
         title=f"Party seat distribution — {election_type} {election_year}",
         y_title="Seats",
+    )
+
+    return Response(content=svg, media_type="image/svg+xml")
+
+
+@app.get("/abstention/{election_type}/{election_year}/{office}/{territory_key}")
+def abstention_req(
+    election_type: str,
+    election_year: int,
+    office: str,
+    territory_key: int,
+):
+    election_type = unquote(election_type)
+    office = unquote(office)
+
+    row = fetch_abstention_row(
+        election_type=election_type,
+        election_year=election_year,
+        office=office,
+        territory_key=territory_key,
+    )
+
+    if not row:
+        return Response(
+            content="",
+            media_type="image/svg+xml",
+        )
+
+    territory_name = str(row[2])
+    territory_level = str(row[3])
+
+    registered_voters = int(row[5] or 0)
+    voters = int(row[6] or 0)
+    abstentions = int(row[7] or 0)
+
+    turnout_rate = float(row[8] or 0)
+    abstention_rate = float(row[9] or 0)
+
+    blank_votes = int(row[10] or 0)
+    null_votes = int(row[11] or 0)
+    candidate_votes = int(row[12] or 0)
+
+    svg = abstention_svg(
+        election_type=election_type.upper(),
+        election_year=election_year,
+        office=office.upper(),
+        territory_name=territory_name,
+        territory_level=territory_level,
+        registered_voters=registered_voters,
+        voters=voters,
+        abstentions=abstentions,
+        turnout_rate=turnout_rate,
+        abstention_rate=abstention_rate,
+        blank_votes=blank_votes,
+        null_votes=null_votes,
+        candidate_votes=candidate_votes,
     )
 
     return Response(content=svg, media_type="image/svg+xml")
@@ -516,7 +572,7 @@ def parliament_svg(
     total_seats = sum(seats)
 
     if total_seats <= 0:
-        return svg_message("No seats found")
+        return ""
 
     rows = max(3, min(10, int(math.sqrt(total_seats))))
     radii = [0.35 + (i / max(rows - 1, 1)) * 0.65 for i in range(rows)]
@@ -736,10 +792,140 @@ def normalize_color(color: str) -> str:
     return "#B3C6BC"
 
 
-def svg_message(message: str) -> str:
-    return f"""
-    <svg xmlns="http://www.w3.org/2000/svg" width="900" height="300">
-        <rect width="100%" height="100%" fill="transparent"/>
-        <text x="40" y="150" font-size="24" fill="#ECF5F0">{message}</text>
-    </svg>
-    """
+def fetch_abstention_row(
+    election_type: str,
+    election_year: int,
+    office: str,
+    territory_key: int,
+):
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                territory_key,
+                territory_code,
+                territory_name,
+                territory_level,
+                election_year,
+                registered_voters,
+                voters,
+                abstentions,
+                turnout_rate,
+                abstention_rate,
+                blank_votes,
+                null_votes,
+                candidate_votes
+            FROM wh.abstention_for_territory(
+                %s::text,
+                %s::integer,
+                %s::text,
+                %s::bigint
+            );
+            """,
+            (
+                election_type,
+                election_year,
+                office,
+                territory_key,
+            ),
+        )
+
+        return cursor.fetchone()
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def abstention_svg(
+    election_type: str,
+    election_year: int,
+    office: str,
+    territory_name: str,
+    territory_level: str,
+    registered_voters: int,
+    voters: int,
+    abstentions: int,
+    turnout_rate: float,
+    abstention_rate: float,
+    blank_votes: int,
+    null_votes: int,
+    candidate_votes: int,
+) -> str:
+    abstention_pct = round(abstention_rate * 100, 2)
+    turnout_pct = round(turnout_rate * 100, 2)
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Pie(
+            labels=["Abstained", "Voted"],
+            values=[abstentions, voters],
+            hole=0.72,
+            sort=False,
+            direction="clockwise",
+            marker=dict(
+                colors=["#F0F4F4", "#B0C4C6"],
+                line=dict(color="#162620", width=2),
+            ),
+            textinfo="none",
+            hoverinfo="skip",
+            showlegend=False,
+            domain=dict(x=[0.08, 0.92], y=[0.12, 0.88]),
+        )
+    )
+
+    fig.add_annotation(
+        x=0.5,
+        y=0.53,
+        xref="paper",
+        yref="paper",
+        text=f"<b>{abstention_pct:.1f}%</b>",
+        showarrow=False,
+        font=dict(size=42, color="#ECF5F0"),
+    )
+
+    fig.add_annotation(
+        x=0.5,
+        y=0.42,
+        xref="paper",
+        yref="paper",
+        text="abstention",
+        showarrow=False,
+        font=dict(size=15, color="#B3C6BC"),
+    )
+
+    fig.add_annotation(
+        x=0.5,
+        y=0.97,
+        xref="paper",
+        yref="paper",
+        text="",
+        showarrow=False,
+        font=dict(size=18, color="#ECF5F0"),
+    )
+
+    fig.add_annotation(
+        x=0.5,
+        y=0.04,
+        xref="paper",
+        yref="paper",
+        text=(
+            f"Adoption {turnout_pct:.1f}% · Voted {voters:,} · Abstained {abstentions:,}"
+        ),
+        showarrow=False,
+        font=dict(size=12, color="#B3C6BC"),
+    )
+
+    fig.update_layout(
+        width=700,
+        height=420,
+        margin=dict(l=10, r=10, t=20, b=20),
+        paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
+        plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
+    )
+
+    return fig.to_image(format="svg").decode("utf-8")

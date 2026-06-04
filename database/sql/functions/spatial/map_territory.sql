@@ -159,4 +159,4 @@ BEGIN
 END;
 $$
     LANGUAGE plpgsql
-    STABLE;
+    IMMUTABLE;

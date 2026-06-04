@@ -1,5 +1,3 @@
-DROP FUNCTION IF EXISTS wh.resolve_vote_territory(text, text, text, text);
-DROP FUNCTION IF EXISTS wh.resolve_vote_territory(text, text, text);
 DROP FUNCTION IF EXISTS wh.resolve_vote_territory(text, text, bigint);
 
 CREATE OR REPLACE FUNCTION wh.resolve_vote_territory(
