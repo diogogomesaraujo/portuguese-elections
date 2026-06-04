@@ -2,8 +2,16 @@ import math
 from urllib.parse import unquote
 
 import plotly.graph_objects as go
+import plotly.io as pio
 import psycopg2
 from fastapi import FastAPI, Response
+
+pio.templates.default = go.layout.Template(
+    layout=dict(
+        width=550,
+        height=500,
+    )
+)
 
 app = FastAPI()
 
@@ -580,14 +588,23 @@ def parliament_svg(
             "xanchor": "center",
             "font": {"color": "#ECF5F0"},
         },
-        legend=dict(font=dict(color="#B3C6BC")),
+        legend=dict(
+            font=dict(color="#B3C6BC"),
+            orientation="h",
+            x=0.5,
+            xanchor="center",
+            y=0.18,
+            yanchor="top",
+        ),
         showlegend=True,
         polar=dict(
             bgcolor="rgba(0,0,0,0)",
+            domain=dict(x=[0, 1], y=[0.15, 1.0]),  # push polar up, free space below
             radialaxis=dict(visible=False),
             angularaxis=dict(visible=False),
+            sector=[0, 180],  # explicitly clip to top semicircle only
         ),
-        margin=dict(l=20, r=20, t=70, b=20),
+        margin=dict(l=20, r=20, t=50, b=20),
         paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
         plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
     )
