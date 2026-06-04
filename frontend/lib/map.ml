@@ -132,14 +132,14 @@ end
                 (module String)
                 (let%map field_options = field_options in
                   field_options.offices |> FieldOptions.office_names |> List.map ~f)
-                ~to_string:f
+                ~to_string:String.capitalize
 
             | Typed_field.Election_type ->
               F.Elements.Dropdown.list
                 (module String)
                 (let%map field_options = field_options in
                   List.map field_options.election_types ~f)
-                ~to_string:f
+                ~to_string:String.capitalize
 
             | Typed_field.Election_year ->
               F.Elements.Dropdown.list
@@ -464,6 +464,31 @@ end
           fun _ -> effect)
     in
 
+    let%sub cursor_state, set_cursor =
+      Bonsai.state
+        (module Bool)
+        ~default_model: true
+    in
+
+
+    let%sub () =
+      Bonsai.Clock.every
+        ~when_to_start_next_effect:
+        `Every_multiple_of_period_non_blocking
+        (Time_ns.Span.of_sec 1.)
+        (let%map cursor_state = cursor_state
+          and set_cursor = set_cursor in
+          set_cursor (not cursor_state))
+    in
+
+    let%sub cursor =
+      let%arr cursor_state = cursor_state in
+
+      match cursor_state with
+      | true  -> "|"
+      | false -> ""
+    in
+
     let%arr form = form
       and set_territory = set_territory
       and territory_state = territory_state
@@ -474,6 +499,9 @@ end
       and fall_votes = fall_votes
       and fall_seats = fall_seats
       and distribution = distribution
+      and cursor_state = cursor_state
+      and set_cursor = set_cursor
+      and cursor = cursor
     in
 
     let v =
@@ -482,6 +510,16 @@ end
     in
 
     let open Css_gen in
+    let open Vdom.Attr in
+
+    let header_style =
+      flex_container
+        ~direction: `Row
+        ~wrap: `Wrap()
+        ~column_gap: (`Px 10)
+      @> width (Length.percent100)
+      |> style
+    in
 
     let box_style =
       flex_container
@@ -489,21 +527,28 @@ end
         ~wrap: `Wrap()
         ~justify_content: `Center
       @> width (Length.percent100)
-      |> Vdom.Attr.style
+      |> style
     in
 
     Vdom.Node.div
-      [ h1 [ text "\\dt portuguese_elections.*" ]
-      ; F.view_as_vdom form
-      (* ;  Vdom.Node.button
-        ~attrs: [Vdom.Attr.on_click (fun _ ->
-                                      set_territory territory_state)]
-          [ Vdom.Node.text "Query" ] *)
+      [ div [ h1 [ text ">" ] ~attrs: [ color (`Hex "#516A61") |> style]
+            ; h1 [ text "\\dt portuguese_elections.*" ]
+            ; h1 [ text cursor ] ~attrs: [ margin_left (`Px (-20)) |> style ] ] ~attrs: [header_style]
+
+      ; div [] ~attrs: [margin_bottom (`Px 10) |> style]
+
+      ; div [ F.view_as_vdom form ]
+
       ; map
-      ; h2 [ text "Data Analysis" ]
+
+      ; h2 [ text "Data Analysis" ] ~attrs: [box_style]
+
       ; h3 [ text (Printf.sprintf "Year-specific (%s)" v.election_year) ]
+
       ; div [treemap; distribution] ~attrs: [box_style]
+
       ; h3 [ text "Multi-year" ]
+
       ; div [rise_votes ; rise_seats ; fall_votes ; fall_seats] ~attrs: [box_style]
       ]
 end
