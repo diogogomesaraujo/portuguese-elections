@@ -467,14 +467,14 @@ def distribution_mode(
         return "aggregate_distribution"
 
     if election_type == "AUTARQUICAS" and office == "AM":
-        if territory_code == "PT" or territory_level == "country":
-            return "aggregate_distribution"
-        return "seat_distribution"
+        if territory_level == "municipality":
+            return "seat_distribution"
+        return "aggregate_distribution"
 
     if election_type == "AUTARQUICAS" and office == "AF":
-        if territory_code == "PT" or territory_level == "country":
-            return "aggregate_distribution"
-        return "seat_distribution"
+        if territory_level == "parish":
+            return "seat_distribution"
+        return "aggregate_distribution"
 
     if election_type == "AUTARQUICAS" and office == "CM":
         return "elected_distribution"
