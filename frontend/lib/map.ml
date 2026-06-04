@@ -541,13 +541,13 @@ end
 
       ; map
 
-      ; h2 [ text "Data Analysis" ] ~attrs: [box_style]
+      (* ; h1 [ text "Data Analysis" ] ~attrs: [box_style] *)
 
-      ; h3 [ text (Printf.sprintf "Year-specific (%s)" v.election_year) ]
+      ; h2 [ text (Printf.sprintf "Findings for %s over the elections for %s." v.election_year v.office) ] ~attrs: [box_style]
 
       ; div [treemap; distribution] ~attrs: [box_style]
 
-      ; h3 [ text "Multi-year" ]
+      ; h2 [ text (Printf.sprintf "What parties won or lost the hearts of the Portuguese over the years?")] ~attrs: [box_style]
 
       ; div [rise_votes ; rise_seats ; fall_votes ; fall_seats] ~attrs: [box_style]
       ]

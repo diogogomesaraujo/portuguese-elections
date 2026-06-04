@@ -77,7 +77,7 @@ def treemap_req(
         labels,
         values,
         colors,
-        title=f"Vote distribution — {election_type} {election_year}",
+        title="How did each party stack up against each other?",
     )
 
     return Response(content=svg, media_type="image/svg+xml")
@@ -265,7 +265,10 @@ def distribution_req(
         )
 
     territory_code = territory_info["territory_code"]
+    territory_name = territory_info["territory_name"]
     territory_level = territory_info["territory_level"]
+
+    election_name = f"{election_type.upper()} {election_year}"
 
     mode = distribution_mode(
         election_type=election_type,
@@ -298,7 +301,7 @@ def distribution_req(
             parties=parties,
             seats=seats,
             colors=colors,
-            title=f"Seat distribution — {election_type} {election_year}",
+            title=f"Who did {territory_name} chose to represent their interests?",
         )
 
         return Response(content=svg, media_type="image/svg+xml")
@@ -355,7 +358,7 @@ def distribution_req(
         parties=parties,
         values=seats,
         colors=colors,
-        title=f"Party seat distribution — {election_type} {election_year}",
+        title=f"Who did {territory_name} chose to represent their interests?",
         y_title="Seats",
     )
 
