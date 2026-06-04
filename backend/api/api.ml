@@ -254,6 +254,32 @@ module Api = struct
           |> Lwt.return
           ))
 
+    let req_swingmap ~name ~microservice_uri =
+      Dream.get (Printf.sprintf "/%s/:type/:office/:key" name)
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+
+          let election_type = Dream.param req "type"    |> Uri.pct_decode in
+          let office        = Dream.param req "office"  |> Uri.pct_decode in
+          let key           = Dream.param req "key"     |> Uri.pct_decode in
+
+          let uri =
+            Printf.sprintf "%s/%s/%s/%s/%s"
+              microservice_uri name
+              (Req.to_param (election_type, false))
+              (Req.to_param (office, false))
+              (Req.to_param (key, false))
+          in
+
+          let%lwt res = Req.get ~uri in
+
+          `String res
+          |> Yojson.to_string
+          |> Dream.response ~headers
+          |> Lwt.return
+          ))
+
+
     let treemap =
       req
         ~name: "treemap"
@@ -273,6 +299,11 @@ module Api = struct
       req
         ~name: "abstention"
         ~microservice_uri
+
+    let swingmap =
+      req_swingmap
+        ~name: "swingmap"
+        ~microservice_uri
   end
 
   module Territory = struct
@@ -286,6 +317,16 @@ module Api = struct
           let parish       = Dream.param req "parish"       |> Uri.pct_decode in
 
           let%lwt res = Conn.find_opt (Territory.key ~district ~municipality ~parish) () in
+          res |> Response.one))
+
+    let name =
+      Dream.get "/name/:key"
+        (fun req -> Dream.sql req (fun conn ->
+          let module Conn = (val conn : Caqti_lwt.CONNECTION) in
+
+          let key     = Dream.param req "key" |> Uri.pct_decode in
+
+          let%lwt res = Conn.find_opt (Territory.name ~key) () in
           res |> Response.one))
   end
 
@@ -315,9 +356,11 @@ module Api = struct
         Plot.rise_and_fall;
         Plot.distribution;
         Plot.abstention;
+        Plot.swingmap;
       ];
       Dream.scope "/territory" [Dream.memory_sessions] [
         Territory.get;
+        Territory.name;
       ]
     ]
 end

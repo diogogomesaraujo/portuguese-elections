@@ -949,3 +949,331 @@ def abstention_svg(
     )
 
     return fig.to_image(format="svg").decode("utf-8")
+
+
+@app.get("/swingmap/{election_type}/{office}/{territory_key}")
+def swingmap_req(
+    election_type: str,
+    office: str,
+    territory_key: int,
+):
+    election_type = unquote(election_type).upper()
+    office = unquote(office)
+
+    parent_info = fetch_territory_info(territory_key)
+    if parent_info is None:
+        return Response(content="", media_type="image/svg+xml")
+
+    child_level = child_territory_level(parent_info["territory_level"])
+    if child_level is None:
+        return Response(content="", media_type="image/svg+xml")
+
+    year_range = fetch_election_year_range(election_type, office)
+    if year_range is None:
+        return Response(content="", media_type="image/svg+xml")
+
+    from_year, to_year = year_range
+
+    children = fetch_child_territories_with_geom(territory_key, child_level)
+    if not children:
+        return Response(content="", media_type="image/svg+xml")
+
+    swing_rows = fetch_swing_for_children(
+        election_type=election_type,
+        office=office,
+        from_year=from_year,
+        to_year=to_year,
+        child_keys=[c["territory_key"] for c in children],
+    )
+
+    swing_by_key = {row["territory_key"]: row for row in swing_rows}
+    for child in children:
+        swing = swing_by_key.get(child["territory_key"])
+        child["swing_value"] = swing["swing_value"] if swing else None
+        child["swing_direction"] = swing["swing_direction"] if swing else "unknown"
+        child["from_margin"] = swing["from_margin"] if swing else None
+        child["to_margin"] = swing["to_margin"] if swing else None
+
+    svg = swingmap_svg(
+        children=children,
+        from_year=from_year,
+        to_year=to_year,
+        parent_name=parent_info["territory_name"],
+    )
+
+    return Response(content=svg, media_type="image/svg+xml")
+
+
+def fetch_election_year_range(
+    election_type: str, office: str
+) -> tuple[int, int] | None:
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                MIN(e.election_year),
+                MAX(e.election_year)
+            FROM wh.dim_election e
+            JOIN wh.fact_vote_result f
+              ON f.election_key = e.election_key
+            JOIN wh.dim_office o
+              ON o.office_key = f.office_key
+            WHERE e.election_type = %s
+              AND o.office_code = %s;
+            """,
+            (election_type, office),
+        )
+
+        row = cursor.fetchone()
+
+        if not row or row[0] is None or row[1] is None:
+            return None
+
+        return int(row[0]), int(row[1])
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def child_territory_level(parent_level: str) -> str | None:
+    order = ["country", "district", "municipality", "parish"]
+    parent_level = parent_level.lower()
+    if parent_level not in order:
+        return None
+    idx = order.index(parent_level)
+    if idx + 1 >= len(order):
+        return None
+    return order[idx + 1]
+
+
+def fetch_child_territories_with_geom(
+    parent_territory_key: int,
+    child_level: str,
+) -> list[dict]:
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                child.territory_key,
+                child.territory_code,
+                child.territory_name,
+                child.territory_level,
+                ST_X(ST_Centroid(child.geom)) AS centroid_x,
+                ST_Y(ST_Centroid(child.geom)) AS centroid_y,
+                ST_AsGeoJSON(ST_SimplifyPreserveTopology(child.geom, 0.0001)) AS geojson
+            FROM wh.dim_territory child
+            JOIN wh.dim_territory parent
+              ON parent.territory_key = %s::bigint
+             AND child.parent_code = parent.territory_code
+            WHERE child.territory_level = %s
+              AND child.geom IS NOT NULL
+            ORDER BY child.territory_code;
+            """,
+            (parent_territory_key, child_level),
+        )
+
+        rows = cursor.fetchall()
+        return [
+            {
+                "territory_key": int(row[0]),
+                "territory_code": str(row[1]),
+                "territory_name": str(row[2]),
+                "territory_level": str(row[3]),
+                "centroid_x": float(row[4]),
+                "centroid_y": float(row[5]),
+                "geojson": row[6],
+            }
+            for row in rows
+        ]
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def fetch_swing_for_children(
+    election_type: str,
+    office: str,
+    from_year: int,
+    to_year: int,
+    child_keys: list[int],
+) -> list[dict]:
+    if not child_keys:
+        return []
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                territory_key,
+                swing_value,
+                swing_direction,
+                from_margin,
+                to_margin
+            FROM wh.vote_swing_by_territory(
+                %s::text,
+                %s::text,
+                %s::integer,
+                %s::integer
+            )
+            WHERE territory_key = ANY(%s::bigint[]);
+            """,
+            (
+                election_type,
+                office,
+                from_year,
+                to_year,
+                child_keys,
+            ),
+        )
+
+        rows = cursor.fetchall()
+        return [
+            {
+                "territory_key": int(row[0]),
+                "swing_value": float(row[1]) if row[1] is not None else None,
+                "swing_direction": str(row[2]),
+                "from_margin": float(row[3]) if row[3] is not None else None,
+                "to_margin": float(row[4]) if row[4] is not None else None,
+            }
+            for row in rows
+        ]
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def swingmap_svg(
+    children: list[dict],
+    from_year: int,
+    to_year: int,
+    parent_name: str,
+) -> str:
+    import json
+
+    LEFT_COLOUR = "#E63946"
+    RIGHT_COLOUR = "#3A86FF"
+    NEUTRAL_COLOUR = "#162327"
+
+    swing_values = [c["swing_value"] for c in children if c["swing_value"] is not None]
+    max_abs = max((abs(v) for v in swing_values), default=1.0) or 1.0
+
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": [],
+    }
+
+    for child in children:
+        if child["geojson"] is None:
+            continue
+        geom = json.loads(child["geojson"])
+        feature_collection["features"].append(
+            {
+                "type": "Feature",
+                "id": str(child["territory_key"]),
+                "geometry": geom,
+                "properties": {"name": child["territory_name"]},
+            }
+        )
+
+    territory_keys = [str(c["territory_key"]) for c in children]
+
+    swing_labels = [
+        (
+            f"{c['territory_name']}<br>"
+            f"Swing: {round(c['swing_value'] * 100, 1):+.1f}pp ({c['swing_direction']})<br>"
+            f"Margin {from_year}: {round(c['from_margin'] * 100, 1) if c['from_margin'] is not None else 'N/A':+}pp<br>"
+            f"Margin {to_year}: {round(c['to_margin'] * 100, 1) if c['to_margin'] is not None else 'N/A':+}pp"
+            if c["swing_value"] is not None
+            else f"{c['territory_name']}<br>No data"
+        )
+        for c in children
+    ]
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Choropleth(
+            geojson=feature_collection,
+            locations=territory_keys,
+            z=[
+                c["swing_value"] * 100 if c["swing_value"] is not None else 0
+                for c in children
+            ],
+            colorscale=[
+                [0.0, LEFT_COLOUR],
+                [0.5, NEUTRAL_COLOUR],
+                [1.0, RIGHT_COLOUR],
+            ],
+            zmin=-max_abs * 100,
+            zmax=max_abs * 100,
+            marker_line_color="#050D0E",
+            marker_line_width=0.8,
+            showscale=True,
+            colorbar=dict(
+                title=dict(text="Swing (pp)", font=dict(color="#B3C6BC")),
+                tickfont=dict(color="#B3C6BC"),
+                bgcolor="rgba(0,0,0,0)",
+                outlinecolor="rgba(0,0,0,0)",
+                orientation="h",
+                x=0.5,
+                y=-0.1,
+                xanchor="center",
+                yanchor="top",
+            ),
+            customdata=swing_labels,
+            hovertemplate="%{customdata}<extra></extra>",
+        )
+    )
+
+    all_lons = [c["centroid_x"] for c in children]
+    all_lats = [c["centroid_y"] for c in children]
+
+    lon_center = (min(all_lons) + max(all_lons)) / 2
+    lat_center = (min(all_lats) + max(all_lats)) / 2
+    lon_range = max(all_lons) - min(all_lons)
+    lat_range = max(all_lats) - min(all_lats)
+
+    lon_pad = max(lon_range * 0.15, 0.05)
+    lat_pad = max(lat_range * 0.15, 0.05)
+
+    fig.update_geos(
+        visible=False,
+        lonaxis_range=[min(all_lons) - lon_pad, max(all_lons) + lon_pad],
+        lataxis_range=[min(all_lats) - lat_pad, max(all_lats) + lat_pad],
+        projection_type="mercator",
+        bgcolor="rgba(0,0,0,0)",
+        showland=False,
+        showcoastlines=False,
+        showframe=False,
+    )
+
+    fig.update_layout(
+        width=600,
+        height=520,
+        title={
+            "text": f"Vote swing {from_year} → {to_year}",
+            "x": 0.5,
+            "xanchor": "center",
+            "font": {"color": "#ECF5F0"},
+        },
+        margin=dict(l=0, r=0, t=50, b=50),
+        paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
+        plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
+        geo=dict(
+            center=dict(lon=lon_center, lat=lat_center),
+        ),
+    )
+
+    return fig.to_image(format="svg").decode("utf-8")

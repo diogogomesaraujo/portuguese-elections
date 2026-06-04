@@ -177,14 +177,24 @@ end
       base_with_args ^ "/votes/fall",
       base_with_args ^ "/seats/rise",
       base_with_args ^ "/seats/fall"
+
+    let uri_of_swingmap ~uri ~name ~election_type ~office ~territory_code =
+      let base = uri ^ "/plot/" ^ name in
+      Printf.sprintf
+        "%s/%s/%s/%s"
+        base
+        election_type
+        office
+        territory_code
   end
 
   module Territory = struct
     type t =
-      { code: string }
+      { code: string
+      ; name: string}
       [@@deriving sexp, equal]
 
-    let default = { code = "1" }
+    let default = { code = "1"; name = not_selected }
 
     let uri_of ~uri ~code ~election_type ~election_year ~office =
       Printf.sprintf
@@ -195,7 +205,7 @@ end
         election_year
         office
 
-    let get ~uri =
+    let get ~uri ~default =
       let%bind.Effect res =
         Bonsai_web.Effect.of_deferred_fun
           (fun uri -> Api.get ~uri ()) uri
@@ -204,13 +214,13 @@ end
       let res =
         match res with
         | Ok res -> res
-        | _ -> ""
+        | _ -> default
       in
 
       match Yojson.Safe.from_string res with
       | `String code ->
-        Effect.return { code = code }
-      | _ -> Effect.return { code = res }
+        Effect.return code
+      | _ -> Effect.return default
   end
 
   let make = Svg.make
@@ -288,14 +298,27 @@ end
         F.value form |> Or_error.ok_exn
       in
 
-      let uri = Printf.sprintf
+      let code_uri = Printf.sprintf
         "%s/territory/%s/%s/%s"
         uri f.district f.municipality f.parish
       in
 
-      let%bind.Effect territory = Territory.get ~uri in
+      let%bind.Effect code =
+        Territory.get ~uri: code_uri ~default: "1"
+      in
 
-      set_territory territory
+      let name_uri = Printf.sprintf
+        "%s/territory/name/%s"
+        uri code
+      in
+
+      let%bind.Effect name =
+        Territory.get
+          ~uri: name_uri
+          ~default: not_selected
+      in
+
+      set_territory { code ; name }
     in
 
     let map_uri =
@@ -352,21 +375,33 @@ end
         ~election_type: (String.uppercase f.election_type)
         ~election_year: f.election_year
         ~office
+        ~territory_code: territory_state.code,
+
+      PlotType.uri_of_swingmap
+        ~uri
+        ~name: "swingmap"
+        ~election_type: (String.uppercase f.election_type)
+        ~office
         ~territory_code: territory_state.code
     in
 
     let treemap_uri =
-      let%map uri, _, _ = uris in
+      let%map uri, _, _, _ = uris in
       uri
     in
 
     let distribution_uri =
-      let%map _, uri, _ = uris in
+      let%map _, uri, _, _ = uris in
       uri
     in
 
     let abstention_uri =
-      let%map _, _, uri = uris in
+      let%map _, _, uri, _ = uris in
+      uri
+    in
+
+    let swingmap_uri =
+      let%map _, _, _, uri = uris in
       uri
     in
 
@@ -380,6 +415,10 @@ end
 
     let%sub abstention =
       make ~uri: abstention_uri ()
+    in
+
+    let%sub swingmap =
+      make ~uri: swingmap_uri ()
     in
 
     let rise_and_fall_uris =
@@ -517,6 +556,7 @@ end
       and fall_seats = fall_seats
       and distribution = distribution
       and abstention = abstention
+      and swingmap = swingmap
       and cursor_state = cursor_state
       and set_cursor = set_cursor
       and cursor = cursor
@@ -565,7 +605,11 @@ end
 
       ; div [treemap; distribution; abstention] ~attrs: [box_style]
 
-      ; h2 [ text (Printf.sprintf "What parties won or lost the hearts of the Portuguese over the years?")] ~attrs: [box_style]
+      ; h2 [ text (Printf.sprintf "What side won or lost the hearts of %s over the years?" territory_state.name)] ~attrs: [box_style]
+
+      ; div [swingmap] ~attrs: [box_style]
+
+      ; h2 [ text (Printf.sprintf "What parties won or lost the hearts of %s over the years?" territory_state.name)] ~attrs: [box_style]
 
       ; div [rise_votes ; rise_seats ; fall_votes ; fall_seats] ~attrs: [box_style]
       ]

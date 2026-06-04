@@ -14,7 +14,7 @@ module Map = struct
           '#162620',
           '50',
           '#0F1A1D',
-          '0.85',
+          '1.0',
           %d)"
         (Req.to_param (election_type, true))
         (Req.to_param (election_year, false))
