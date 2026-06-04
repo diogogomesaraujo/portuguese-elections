@@ -1,20 +1,4 @@
-fix parishes with same name
-    they both appear at same time in the map
-
-
-grafico de barras conjuntas partidos crescimento (chega, il, livre)
-queda (bloco, pcp, cds)
-
-queda (ps+psd)
-
-
-bots are not duplicated
-parishes are not being recogzined
-political entities
-
-
-
-
+PARA A APRESENTAÇÃO USAR OS QUE TIVEREM MELHORES DADOS
 
 URGENTE
 
@@ -27,3 +11,12 @@ spatial -> import actual db from net
 data -> fix incoherent 5% parishes
 
 braga -> barcelos ----> 2021/2025 - dá para ver que certas freguesias não correspondem (viraram união)
+
+
+MESSAGES
+
+Who did "territory name" chose to represent them for "election name"?
+
+What parties have risen and fallen over the years?
+
+How many portuguese people exerted their right to vote?
