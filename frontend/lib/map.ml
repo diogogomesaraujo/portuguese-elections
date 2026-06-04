@@ -344,16 +344,29 @@ end
         ~election_type: f.election_type
         ~election_year: f.election_year
         ~office
+        ~territory_code: territory_state.code,
+
+      PlotType.uri_of
+        ~uri
+        ~name: "abstention"
+        ~election_type: (String.uppercase f.election_type)
+        ~election_year: f.election_year
+        ~office
         ~territory_code: territory_state.code
     in
 
     let treemap_uri =
-      let%map uri, _ = uris in
+      let%map uri, _, _ = uris in
       uri
     in
 
     let distribution_uri =
-      let%map _, uri = uris in
+      let%map _, uri, _ = uris in
+      uri
+    in
+
+    let abstention_uri =
+      let%map _, _, uri = uris in
       uri
     in
 
@@ -363,6 +376,10 @@ end
 
     let%sub distribution =
       make ~uri: distribution_uri ()
+    in
+
+    let%sub abstention =
+      make ~uri: abstention_uri ()
     in
 
     let rise_and_fall_uris =
@@ -499,6 +516,7 @@ end
       and fall_votes = fall_votes
       and fall_seats = fall_seats
       and distribution = distribution
+      and abstention = abstention
       and cursor_state = cursor_state
       and set_cursor = set_cursor
       and cursor = cursor
@@ -545,7 +563,7 @@ end
 
       ; h2 [ text (Printf.sprintf "Findings for %s over the elections for %s." v.election_year v.office) ] ~attrs: [box_style]
 
-      ; div [treemap; distribution] ~attrs: [box_style]
+      ; div [treemap; distribution; abstention] ~attrs: [box_style]
 
       ; h2 [ text (Printf.sprintf "What parties won or lost the hearts of the Portuguese over the years?")] ~attrs: [box_style]
 

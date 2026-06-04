@@ -268,6 +268,11 @@ module Api = struct
       req
         ~name: "distribution"
         ~microservice_uri
+
+    let abstention =
+      req
+        ~name: "abstention"
+        ~microservice_uri
   end
 
   module Territory = struct
@@ -309,6 +314,7 @@ module Api = struct
         Plot.treemap;
         Plot.rise_and_fall;
         Plot.distribution;
+        Plot.abstention;
       ];
       Dream.scope "/territory" [Dream.memory_sessions] [
         Territory.get;
