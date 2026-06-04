@@ -384,6 +384,26 @@ def abstention_req(
     election_type = unquote(election_type)
     office = unquote(office)
 
+    territory_info = fetch_territory_info(territory_key)
+
+    if territory_info is None:
+        return Response(
+            content="",
+            media_type="image/svg+xml",
+        )
+
+    territory_level = territory_info["territory_level"].lower()
+
+    if (
+        election_type.upper() == "LEGISLATIVAS"
+        and office.upper() == "AR"
+        and territory_level not in ("country", "district")
+    ):
+        return Response(
+            content="",
+            media_type="image/svg+xml",
+        )
+
     row = fetch_abstention_row(
         election_type=election_type,
         election_year=election_year,
