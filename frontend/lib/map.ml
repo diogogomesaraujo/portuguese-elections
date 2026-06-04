@@ -143,8 +143,8 @@ end
   end
 
   module PlotType = struct
-    let uri_of_treemap ~uri ~election_type ~election_year ~office ~territory_code =
-      let base = uri ^ "/plot/treemap" in
+    let uri_of ~uri ~name ~election_type ~election_year ~office ~territory_code =
+      let base = uri ^ "/plot/" ^ name in
       Printf.sprintf
         "%s/%s/%s/%s/%s"
         base
@@ -306,7 +306,7 @@ end
       make ~uri: map_uri ()
     in
 
-    let treemap_uri =
+    let uris =
       let%map territory_state = territory_state
       and field_options_state = field_options_state
       and form = form in
@@ -321,16 +321,39 @@ end
           not_selected
       in
 
-      PlotType.uri_of_treemap
+      PlotType.uri_of
         ~uri
+        ~name: "treemap"
+        ~election_type: f.election_type
+        ~election_year: f.election_year
+        ~office
+        ~territory_code: territory_state.code,
+
+      PlotType.uri_of
+        ~uri
+        ~name: "distribution"
         ~election_type: f.election_type
         ~election_year: f.election_year
         ~office
         ~territory_code: territory_state.code
     in
 
+    let treemap_uri =
+      let%map uri, _ = uris in
+      uri
+    in
+
+    let distribution_uri =
+      let%map _, uri = uris in
+      uri
+    in
+
     let%sub treemap =
       make ~uri: treemap_uri ()
+    in
+
+    let%sub distribution =
+      make ~uri: distribution_uri ()
     in
 
     let rise_and_fall_uris =
@@ -356,22 +379,22 @@ end
     in
 
     let rise_votes_uri =
-      let%map vr, _vf, _sr, _sf = rise_and_fall_uris in
+      let%map vr, _, _, _ = rise_and_fall_uris in
       vr
     in
 
     let rise_seats_uri =
-      let%map _vr, vf, _sr, _sf = rise_and_fall_uris in
+      let%map _, vf, _, _ = rise_and_fall_uris in
       vf
     in
 
     let fall_votes_uri =
-      let%map _vr, _vf, sr, _sf = rise_and_fall_uris in
+      let%map _, _, sr, _ = rise_and_fall_uris in
       sr
     in
 
     let fall_seats_uri =
-      let%map _vr, _vf, _sr, sf = rise_and_fall_uris in
+      let%map _, _, _, sf = rise_and_fall_uris in
       sf
     in
 
@@ -441,6 +464,12 @@ end
       and rise_seats = rise_seats
       and fall_votes = fall_votes
       and fall_seats = fall_seats
+      and distribution = distribution
+    in
+
+    let v =
+      F.value_or_default form
+        ~default: Selected.default
     in
 
     Vdom.Node.div
@@ -452,8 +481,8 @@ end
           [ Vdom.Node.text "Query" ] *)
       ; map
       ; h2 [ text "Data Analysis" ]
-      ; h3 [ text "General" ]
-      ; treemap
+      ; h3 [ text (Printf.sprintf "Year-specific (%s)" v.election_year) ]
+      ; treemap; distribution
       ; h3 [ text "Multi-year" ]
       ; rise_votes ; rise_seats ; fall_votes ; fall_seats
       ]

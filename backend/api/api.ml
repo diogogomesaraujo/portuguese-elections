@@ -198,7 +198,7 @@ module Api = struct
   end
 
   module Plot = struct
-    let req_treemap ~name ~microservice_uri =
+    let req ~name ~microservice_uri =
       Dream.get (Printf.sprintf "/%s/:type/:year/:office/:key" name)
         (fun req -> Dream.sql req (fun conn ->
           let module Conn = (val conn : Caqti_lwt.CONNECTION) in
@@ -206,7 +206,7 @@ module Api = struct
           let election_type = Dream.param req "type"    |> Uri.pct_decode in
           let election_year = Dream.param req "year"    |> Uri.pct_decode in
           let office        = Dream.param req "office"  |> Uri.pct_decode in
-          let key           = Dream.param req "key"  |> Uri.pct_decode in
+          let key           = Dream.param req "key"     |> Uri.pct_decode in
 
           let uri =
             Printf.sprintf "%s/%s/%s/%s/%s/%s"
@@ -255,13 +255,18 @@ module Api = struct
           ))
 
     let treemap =
-      req_treemap
+      req
         ~name: "treemap"
         ~microservice_uri
 
     let rise_and_fall =
       req_rise_and_fall
         ~name: "riseandfall"
+        ~microservice_uri
+
+    let distribution =
+      req
+        ~name: "distribution"
         ~microservice_uri
   end
 
@@ -303,6 +308,7 @@ module Api = struct
       Dream.scope "/plot" [Dream.memory_sessions] [
         Plot.treemap;
         Plot.rise_and_fall;
+        Plot.distribution;
       ];
       Dream.scope "/territory" [Dream.memory_sessions] [
         Territory.get;

@@ -63,6 +63,8 @@ def treemap_req(
     values = [int(r[1] or 0) for r in rows]
     colors = [normalize_color(str(r[2] or "#B3C6BC")) for r in rows]
 
+    election_type = election_type.upper()
+
     svg = treemap_svg(
         labels,
         values,
@@ -282,6 +284,8 @@ def distribution_req(
         seats = [int(row[1] or 0) for row in rows]
         colors = [normalize_color(str(row[2] or "#B3C6BC")) for row in rows]
 
+        election_type = election_type.upper()
+
         svg = parliament_svg(
             parties=parties,
             seats=seats,
@@ -309,6 +313,8 @@ def distribution_req(
         votes = int(row[1] or 0)
         color = normalize_color(str(row[2] or "#B3C6BC"))
 
+        election_type = election_type.upper()
+
         svg = elected_svg(
             party=party,
             votes=votes,
@@ -327,13 +333,15 @@ def distribution_req(
 
     if not rows:
         return Response(
-            content=svg_message("No seat distribution found"),
+            content=svg_message("Not found"),
             media_type="image/svg+xml",
         )
 
     parties = [str(row[0]) for row in rows]
     seats = [int(row[1] or 0) for row in rows]
     colors = [normalize_color(str(row[2] or "#B3C6BC")) for row in rows]
+
+    election_type = election_type.upper()
 
     svg = square_bar_svg(
         parties=parties,
@@ -582,8 +590,6 @@ def parliament_svg(
         margin=dict(l=20, r=20, t=70, b=20),
         paper_bgcolor=TRANSPARENT_LAYOUT["paper_bgcolor"],
         plot_bgcolor=TRANSPARENT_LAYOUT["plot_bgcolor"],
-        height=600,
-        width=900,
     )
 
     return fig.to_image(format="svg").decode("utf-8")
@@ -703,8 +709,6 @@ def elected_svg(
         paper_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
         margin=dict(l=20, r=20, t=70, b=20),
-        height=420,
-        width=600,
     )
 
     return fig.to_image(format="svg").decode("utf-8")

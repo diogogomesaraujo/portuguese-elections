@@ -74,11 +74,11 @@ SELECT
     COALESCE(
         color_hex,
         CASE
-            WHEN entity_type = 'coalition' THEN '#BFC5C9'
-            WHEN entity_type = 'gce'       THEN '#D6DBDE'
-            WHEN entity_type = 'blank'     THEN '#F5F7F8'
-            WHEN entity_type = 'null'      THEN '#A0A6AB'
-            ELSE                                '#E8ECEF'
+            WHEN entity_type = 'coalition' THEN '#C8D8D9'
+            WHEN entity_type = 'gce'       THEN '#DDE6E7'
+            WHEN entity_type = 'blank'     THEN '#F0F4F4'
+            WHEN entity_type = 'null'      THEN '#B0C4C6'
+            ELSE                                '#E4ECEC'
             END
     ) AS color
 FROM op.political_entity;
@@ -311,11 +311,11 @@ BEGIN
         COALESCE(
             color_hex,
             CASE
-                WHEN entity_type = 'coalition' THEN '#BFC5C9'
-                WHEN entity_type = 'gce'       THEN '#D6DBDE'
-                WHEN entity_type = 'blank'     THEN '#F5F7F8'
-                WHEN entity_type = 'null'      THEN '#A0A6AB'
-                ELSE                                '#E8ECEF'
+                WHEN entity_type = 'coalition' THEN '#C8D8D9'
+                WHEN entity_type = 'gce'       THEN '#DDE6E7'
+                WHEN entity_type = 'blank'     THEN '#F0F4F4'
+                WHEN entity_type = 'null'      THEN '#B0C4C6'
+                ELSE                                '#E4ECEC'
                 END
         ) AS color
     FROM op.political_entity;
