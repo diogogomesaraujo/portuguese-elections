@@ -164,6 +164,13 @@ def riseandfall_req(
         conn.close()
 
     if not rows:
+        district_key = fetch_district_key_for(territory_key)
+        if district_key is not None and district_key != territory_key:
+            rows = fetch_rise_and_fall(
+                election_type, office, district_key, metric, direction
+            )
+
+    if not rows:
         return Response(
             content="",
             media_type="image/svg+xml",
@@ -391,6 +398,12 @@ def abstention_req(
 
     territory_name = str(row[2])
     territory_level = str(row[3])
+
+    if election_type.upper() == "LEGISLATIVAS" and territory_level.lower() in {
+        "municipality",
+        "parish",
+    }:
+        return Response(content="", media_type="image/svg+xml")
 
     registered_voters = int(row[5] or 0)
     voters = int(row[6] or 0)
@@ -960,3 +973,79 @@ def tag_pct(svg: str) -> str:
         svg,
         count=1,
     )
+
+
+def fetch_rise_and_fall(
+    election_type: str,
+    office: str,
+    territory_key: int,
+    metric: str,
+    direction: str,
+):
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT
+                election_year,
+                sigla,
+                name,
+                color,
+                value,
+                votes,
+                seats,
+                variation_value,
+                variation_direction
+            FROM wh.rise_and_fall(
+                %s::text,
+                %s::text,
+                %s::bigint,
+                %s::text,
+                %s::text
+            );
+            """,
+            (election_type, office, territory_key, metric, direction),
+        )
+
+        return cursor.fetchall()
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def fetch_district_key_for(territory_key: int) -> int | None:
+    info = fetch_territory_info(territory_key)
+
+    if info is None:
+        return None
+
+    if info["territory_level"].lower() == "district":
+        return territory_key
+
+    district_code = info["territory_code"][:2]
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT territory_key
+            FROM wh.dim_territory
+            WHERE territory_level = 'district'
+              AND territory_code = %s::text
+            LIMIT 1;
+            """,
+            (district_code,),
+        )
+
+        row = cursor.fetchone()
+
+        return int(row[0]) if row else None
+
+    finally:
+        cursor.close()
+        conn.close()
